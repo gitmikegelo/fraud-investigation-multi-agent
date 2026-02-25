@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+/* ── Custom theme tokens ─────────────────────────────────────────────── */
+:root {
+  --c-bg:        #0b0e14;
+  --c-surface:   #111621;
+  --c-surface2:  #1a2030;
+  --c-border:    #242d3d;
+  --c-text:      #c8d1e0;
+  --c-text-dim:  #6b7a94;
+  --c-accent:    #3b82f6;
+  --c-accent2:   #818cf8;
+  --c-green:     #22c55e;
+  --c-amber:     #f59e0b;
+  --c-red:       #ef4444;
+  --c-cyan:      #06b6d4;
+
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--c-text);
+  background: var(--c-bg);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 3px; }
+
+/* ── Pulse animation for active node ─────────────────────────────────── */
+@keyframes pulse-ring {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  70%  { transform: scale(1.7); opacity: 0; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+.node-pulse {
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+
+/* ── Glow for active edges ───────────────────────────────────────────── */
+@keyframes edge-flow {
+  0%   { stroke-dashoffset: 20; }
+  100% { stroke-dashoffset: 0; }
+}
+.edge-active {
+  animation: edge-flow 0.8s linear infinite;
+}
+
+/* ── Log entry fade-in ───────────────────────────────────────────────── */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.log-entry {
+  animation: fade-in-up 0.25s ease-out;
+}
+
+/* ── Markdown dossier styling ────────────────────────────────────────── */
+.dossier-content h1 { font-size: 1.5rem; font-weight: 700; margin: 1.5rem 0 0.75rem; color: #e2e8f0; }
+.dossier-content h2 { font-size: 1.25rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: #cbd5e1; }
+.dossier-content h3 { font-size: 1.1rem; font-weight: 600; margin: 1rem 0 0.5rem; color: #94a3b8; }
+.dossier-content p  { margin: 0.5rem 0; line-height: 1.65; }
+.dossier-content ul { padding-left: 1.5rem; margin: 0.5rem 0; }
+.dossier-content li { margin: 0.25rem 0; }
+.dossier-content table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.85rem; }
+.dossier-content th { background: var(--c-surface2); padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--c-border); }
+.dossier-content td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--c-border); }
+.dossier-content code { background: var(--c-surface2); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+.dossier-content pre { background: var(--c-surface2); padding: 1rem; border-radius: 8px; overflow-x: auto; }

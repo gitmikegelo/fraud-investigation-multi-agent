@@ -1,0 +1,61 @@
+COMPREHENSIVE FRAUD INVESTIGATION REPORT
+
+1. ANOMALY DETECTION
+   - Primary Target: Provider P-4482
+   - Anomaly Score: 1.0 (MAXIMUM ALERT)
+   - Total Billed: $2,221,465.05
+   - Specialty: Orthopedic Surgery
+   - Region: Northeast
+
+2. STATISTICAL DEVIATION METRICS
+   a. Claims per Patient
+      - Entity Value: 4.25
+      - Peer Average: 1.4563
+      - Z-Score: 2.47 (SIGNIFICANT DEVIATION)
+
+   b. Average Billed per Claim
+      - Entity Value: $43,558.14
+      - Peer Average: $23,050.24
+      - Z-Score: 2.45 (SIGNIFICANT DEVIATION)
+
+   c. CPT Code Concentration
+      - Entity Value: 0.8627
+      - Peer Average: 0.3271
+      - Z-Score: 2.44 (SIGNIFICANT DEVIATION)
+
+3. CLAIM PATTERN ANALYSIS
+   - Total Claims: 51
+   - Unique Patients: 12
+   - Predominant CPT Code: 27447 (Knee Replacement)
+   - Consistent High-Value Claims: $36,000 - $62,000 range
+   - Facility Consistent: F-9901 for ALL claims
+
+4. NETWORK CONNECTIONS
+   - Total Connected Entities: 54
+   - Connection Density: 1.02
+   - High-Anomaly Members: 12 members with scores > 0.95
+   - Key Connected Providers: P-1190, P-3387, P-5521
+
+5. FRAUD RING CHARACTERISTICS
+   - Ring Members: 13 entities
+   - Average Anomaly Score: 0.98
+   - Total Billed in Ring: $4,442,930.10
+   - Connection Density: 0.92
+
+6. REFERRAL PATTERN HIGHLIGHTS
+   - Consistent Top Referral Source: P-1190
+   - Monthly Referral Concentration: 0.5 - 0.67
+   - Referral Source Stability: 3 consistent providers
+   - Suspicious Month: 2026-01 (100% referrals from P-5521)
+
+CRITICAL FINDINGS:
+- MAXIMUM ANOMALY SCORE
+- 2.4-2.5 STANDARD DEVIATION FROM PEER GROUP
+- POTENTIAL COORDINATED BILLING SCHEME
+- CONCENTRATED REFERRAL NETWORK
+
+RECOMMENDED IMMEDIATE ACTIONS:
+1. Full audit of P-4482 billing practices
+2. Investigate referral relationships with P-1190, P-3387, P-5521
+3. Review all claims involving F-9901 facility
+4. Forensic examination of knee replacement (CPT 27447) claims

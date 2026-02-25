@@ -1,0 +1,24 @@
+Findings (In Progress)
+last investigation
+Detailed Anomaly Analysis:
+
+Provider P-7777 (Pain Management):
+- Billing 2.68x higher per claim than peers
+- 3.21x more claims per patient than average
+- 95% CPT code concentration (vs. 35% peer average)
+- High out-of-specialty billing rate (73.72%)
+
+Provider P-6610 (Cardiology):
+- Billing 3.68x higher per claim than peers
+- 2.62x more claims per patient
+- Extremely low unique patients per month
+- High referral concentration (83.33%)
+
+Recommended Next Steps:
+1. Conduct detailed claim review for both providers
+2. Investigate referral sources
+3. Cross-reference with network connections
+
+Would you like me to proceed with finding potential connections or investigating claim details?
+evidence gaps
+Sorry, need more steps to process this request.

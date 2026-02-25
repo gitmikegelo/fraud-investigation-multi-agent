@@ -1,0 +1,56 @@
+graph TD
+    START(["🧑 User Query"])
+    INIT["Initialize Data<br/>50K claims · 500 providers · 5K members"]
+    
+    START --> INIT
+    INIT --> ORCH["🎯 Orchestrator<br/>Lead Investigator"]
+    
+    ORCH -->|INVESTIGATE| INV["🔍 Investigation Agent<br/>AWS Bedrock Claude"]
+    ORCH -->|COMPILE| DOS["📝 Dossier Agent<br/>AWS Bedrock Claude"]
+    ORCH -->|DONE| END(["✅ Complete"])
+
+    INV --> T1["scan_new_claims"]
+    INV --> T2["profile_entity"]
+    INV --> T3["compare_to_peers"]
+    INV --> T4["get_claim_details"]
+    INV --> T5["find_connections"]
+    INV --> T6["find_ring"]
+    INV --> T7["get_referral_history"]
+    
+    T1 --> LOOP1["[Investigation Loop<br/>Findings gathered]"]
+    T2 --> LOOP1
+    T3 --> LOOP1
+    T4 --> LOOP1
+    T5 --> LOOP1
+    T6 --> LOOP1
+    T7 --> LOOP1
+    
+    LOOP1 --> ORCH
+
+    DOS --> D1["assess_evidence"]
+    DOS --> D2["search_billing_rules<br/>FAISS Index"]
+    DOS --> D3["find_similar_cases"]
+    DOS --> D4["estimate_recovery"]
+    DOS --> D5["compile_dossier"]
+    
+    D1 --> LOOP2["[Dossier Loop<br/>Evidence compiled]"]
+    D2 --> LOOP2
+    D3 --> LOOP2
+    D4 --> LOOP2
+    D5 --> LOOP2
+    
+    LOOP2 --> ORCH
+    
+    END --> OUTPUT["📊 Final Dossier<br/>Markdown Report"]
+    
+    classDef agent fill:#4A90D9,stroke:#2C5F8A,color:#fff,font-weight:bold
+    classDef tool fill:#F5A623,stroke:#C77D0A,color:#fff,font-size:11px
+    classDef loop fill:#FFE5CC,stroke:#C77D0A,color:#333
+    classDef data fill:#7ED321,stroke:#4A8C12,color:#fff,font-weight:bold
+    classDef entry fill:#D0021B,stroke:#9B0114,color:#fff,font-weight:bold
+    
+    class ORCH,INV,DOS agent
+    class T1,T2,T3,T4,T5,T6,T7,D1,D2,D3,D4,D5 tool
+    class LOOP1,LOOP2 loop
+    class INIT data
+    class START,END,OUTPUT entry

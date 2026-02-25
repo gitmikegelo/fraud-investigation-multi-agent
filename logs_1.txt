@@ -1,0 +1,102 @@
+Orchestrator
+--- Iteration 1 | Current phase: start ---
+00:06:30
+Orchestrator
+Calling LLM for routing decision...
+00:06:30
+Orchestrator
+LLM responded in 9.3s
+00:06:39
+Orchestrator
+Phase transition: start -> investigate
+00:06:39
+Investigation
+Starting investigation sub-agent (7 tools available)...
+00:06:39
+Investigation
+Invoking LLM + tool loop (this may take a while)...
+00:06:39
+scan_new_claims
+Scanning claims (last 90 days, anomaly > 0.5)...
+00:06:43
+scan_new_claims
+Found 8 high-anomaly entities (0.0s)
+00:06:43
+profile_entity
+Profiling P-7777...
+00:06:48
+profile_entity
+Profiling P-6610...
+00:07:02
+profile_entity
+Profiling P-1520...
+00:07:04
+compare_to_peers
+Comparing P-7777 on "avg_billed_per_claim"...
+00:07:07
+compare_to_peers
+Comparing P-7777 on "claims_per_patient"...
+00:07:10
+get_claim_details
+Fetching up to 20 claims for P-7777...
+00:07:13
+find_connections
+Traversing graph from P-7777 (depth=2)...
+00:07:16
+find_ring
+Searching for fraud rings (anomaly >= 0.5, min entities=3)...
+00:07:55
+get_referral_history
+Pulling 18-month referral history for P-7777...
+00:08:25
+get_referral_history
+Pulling 18-month referral history for P-6610...
+00:08:51
+Investigation
+Sub-agent finished in 162.9s | Tool calls made: 11
+00:09:22
+Investigation
+Summary preview: Referral Pattern Observations: 1. P-7777 Referral Characteristics: - Referral sources vary monthly - Concentration ranges from 0.2 to 1.0 - Unique referra…expand
+00:09:22
+Orchestrator
+--- Iteration 2 | Current phase: investigate ---
+00:09:22
+Orchestrator
+Calling LLM for routing decision...
+00:09:22
+Orchestrator
+LLM responded in 2.6s
+00:09:25
+Orchestrator
+Phase transition: investigate -> compile
+00:09:25
+Dossier
+Starting dossier sub-agent (5 tools available)...
+00:09:25
+Dossier
+Findings payload size: 937 chars
+00:09:25
+Dossier
+Invoking LLM + tool loop (evidence assessment & compilation)...
+00:09:25
+assess_evidence
+Assessing evidence for "Potential referral kickback scheme involving interconnected provider network" (4 points)...
+00:09:33
+assess_evidence
+Result: INSUFFICIENT (3 passed, 1 failed)
+00:09:33
+Dossier
+Sub-agent finished in 12.4s | Tool calls made: 1
+00:09:37
+Dossier
+Using AIMessage fallback: 803 chars
+00:09:37
+Dossier
+Evidence assessed as SUFFICIENT
+00:09:37
+Dossier
+Dossier length: 803 chars
+00:09:37
+Dossier
+Setting next phase -> done
+00

@@ -1,19 +1,47 @@
 @import "tailwindcss";
 
-/* ── Custom theme tokens ─────────────────────────────────────────────── */
+/* ── Design tokens ─────────────────────────────────────────────────── */
 :root {
-  --c-bg:        #0b0e14;
-  --c-surface:   #111621;
-  --c-surface2:  #1a2030;
-  --c-border:    #242d3d;
-  --c-text:      #c8d1e0;
-  --c-text-dim:  #6b7a94;
-  --c-accent:    #3b82f6;
-  --c-accent2:   #818cf8;
-  --c-green:     #22c55e;
-  --c-amber:     #f59e0b;
-  --c-red:       #ef4444;
-  --c-cyan:      #06b6d4;
+  /* Backgrounds */
+  --c-bg:           #f4f6f9;
+  --c-surface:      #ffffff;
+  --c-surface2:     #f8fafc;
+  --c-surface3:     #f1f5f9;
+
+  /* Borders */
+  --c-border:       #e2e8f0;
+  --c-border2:      #cbd5e1;
+
+  /* Text */
+  --c-text:         #0f172a;
+  --c-text-dim:     #64748b;
+  --c-text-muted:   #94a3b8;
+
+  /* Accent — indigo */
+  --c-accent:       #4f46e5;
+  --c-accent-light: #eef2ff;
+  --c-accent-mid:   #818cf8;
+
+  /* Semantic */
+  --c-green:        #16a34a;
+  --c-green-bg:     #f0fdf4;
+  --c-green-border: #bbf7d0;
+  --c-amber:        #d97706;
+  --c-amber-bg:     #fffbeb;
+  --c-amber-border: #fde68a;
+  --c-red:          #dc2626;
+  --c-red-bg:       #fef2f2;
+  --c-red-border:   #fecaca;
+  --c-purple:       #7c3aed;
+  --c-cyan:         #0891b2;
+
+  /* Sidebar */
+  --c-sidebar:         #0f172a;
+  --c-sidebar-surface: #1e293b;
+  --c-sidebar-hover:   rgba(255,255,255,0.06);
+  --c-sidebar-active:  rgba(99,102,241,0.18);
+  --c-sidebar-text:    #94a3b8;
+  --c-sidebar-border:  rgba(255,255,255,0.07);
 
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   color: var(--c-text);
@@ -28,19 +56,18 @@ body {
 }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 3px; }
+::-webkit-scrollbar             { width: 5px; height: 5px; }
+::-webkit-scrollbar-track       { background: transparent; }
+::-webkit-scrollbar-thumb       { background: var(--c-border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c-text-muted); }
 
-/* ── Pulse animation for active node ─────────────────────────────────── */
+/* ── Pulse for active agent node ────────────────────────────────────── */
 @keyframes pulse-ring {
-  0%   { transform: scale(1);   opacity: 0.7; }
+  0%   { transform: scale(1);   opacity: 0.5; }
   70%  { transform: scale(1.7); opacity: 0; }
   100% { transform: scale(1.7); opacity: 0; }
 }
-.node-pulse {
-  animation: pulse-ring 1.5s ease-out infinite;
-}
+.node-pulse { animation: pulse-ring 1.5s ease-out infinite; }
 
 /* ── Glow for active edges ───────────────────────────────────────────── */
 @keyframes edge-flow {
@@ -51,24 +78,59 @@ body {
   animation: edge-flow 0.8s linear infinite;
 }
 
-/* ── Log entry fade-in ───────────────────────────────────────────────── */
+/* ── List item fade-in ───────────────────────────────────────────────── */
 @keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(5px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.log-entry {
-  animation: fade-in-up 0.25s ease-out;
-}
+.log-entry { animation: fade-in-up 0.2s ease-out; }
 
-/* ── Markdown dossier styling ────────────────────────────────────────── */
-.dossier-content h1 { font-size: 1.5rem; font-weight: 700; margin: 1.5rem 0 0.75rem; color: #e2e8f0; }
-.dossier-content h2 { font-size: 1.25rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: #cbd5e1; }
-.dossier-content h3 { font-size: 1.1rem; font-weight: 600; margin: 1rem 0 0.5rem; color: #94a3b8; }
-.dossier-content p  { margin: 0.5rem 0; line-height: 1.65; }
+/* ── Dossier — screen markdown ───────────────────────────────────────── */
+.dossier-content h1 {
+  font-size: 1.4rem; font-weight: 700;
+  margin: 1.5rem 0 0.75rem; color: var(--c-text);
+  padding-bottom: 0.5rem; border-bottom: 2px solid var(--c-accent);
+}
+.dossier-content h2 {
+  font-size: 1.1rem; font-weight: 600;
+  margin: 1.25rem 0 0.5rem; color: var(--c-text);
+  padding-bottom: 0.35rem; border-bottom: 1px solid var(--c-border);
+}
+.dossier-content h3 { font-size: 0.95rem; font-weight: 600; margin: 1rem 0 0.4rem; color: var(--c-text-dim); }
+.dossier-content p  { margin: 0.5rem 0; line-height: 1.7; color: var(--c-text); }
 .dossier-content ul { padding-left: 1.5rem; margin: 0.5rem 0; }
-.dossier-content li { margin: 0.25rem 0; }
-.dossier-content table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.85rem; }
-.dossier-content th { background: var(--c-surface2); padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--c-border); }
-.dossier-content td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--c-border); }
-.dossier-content code { background: var(--c-surface2); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
-.dossier-content pre { background: var(--c-surface2); padding: 1rem; border-radius: 8px; overflow-x: auto; }
+.dossier-content li { margin: 0.3rem 0; color: var(--c-text); }
+.dossier-content strong { color: var(--c-text); font-weight: 600; }
+.dossier-content table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.8rem; border: 1px solid var(--c-border); border-radius: 8px; overflow: hidden; }
+.dossier-content thead { background: var(--c-surface2); }
+.dossier-content th { padding: 0.55rem 0.75rem; text-align: left; border-bottom: 1px solid var(--c-border2); color: var(--c-text); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.dossier-content td     { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--c-border); color: var(--c-text); }
+.dossier-content tr:hover td { background: var(--c-surface2); }
+.dossier-content .table-wrap { overflow-x: auto; margin: 1rem 0; border-radius: 8px; border: 1px solid var(--c-border); }
+.dossier-content code { background: var(--c-surface2); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; border: 1px solid var(--c-border); }
+.dossier-content pre  { background: var(--c-surface2); padding: 1rem; border-radius: 8px; overflow-x: auto; border: 1px solid var(--c-border); }
+
+/* ── PDF export (print-friendly) ────────────────────────────────────── */
+.dossier-pdf-content {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #1e293b;
+  background: #ffffff;
+  padding: 0.5in;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.dossier-pdf-content h1 { font-size: 18px; font-weight: 700; margin: 18px 0 8px; color: #0f172a; border-bottom: 2px solid #4f46e5; padding-bottom: 4px; }
+.dossier-pdf-content h2 { font-size: 14px; font-weight: 600; margin: 14px 0 6px; color: #1e293b; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; }
+.dossier-pdf-content h3 { font-size: 12px; font-weight: 600; margin: 10px 0 4px; color: #334155; }
+.dossier-pdf-content p  { margin: 4px 0; }
+.dossier-pdf-content ul { padding-left: 18px; margin: 4px 0; }
+.dossier-pdf-content li { margin: 2px 0; }
+.dossier-pdf-content strong { color: #0f172a; }
+.dossier-pdf-content table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 10px; }
+.dossier-pdf-content thead { background: #f1f5f9; }
+.dossier-pdf-content th { padding: 5px 8px; text-align: left; border: 1px solid #cbd5e1; font-weight: 600; color: #0f172a; white-space: nowrap; }
+.dossier-pdf-content td { padding: 4px 8px; border: 1px solid #e2e8f0; color: #334155; }
+.dossier-pdf-content tr:nth-child(even) td { background: #f8fafc; }
+.dossier-pdf-content code { background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 0.9em; }
+.dossier-pdf-content pre { background: #f1f5f9; padding: 8px; border-radius: 4px; overflow-x: auto; }
+.dossier-pdf-content hr { border: none; border-top: 1px solid #cbd5e1; margin: 10px 0; }

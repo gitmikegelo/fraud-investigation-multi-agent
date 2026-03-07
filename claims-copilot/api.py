@@ -18,6 +18,9 @@ from fastapi.middleware.cors import CORSMiddleware
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from demo_config import is_demo_mode
+from demo_runner import run_demo_investigation_sync
+
 from main import initialize_data, DataContext
 from agents.tools_investigation import set_context as set_investigation_context
 from agents.tools_dossier import set_context as set_dossier_context
@@ -64,10 +67,12 @@ async def ws_send(ws: WebSocket, event_type: str, data: dict):
 
 
 # ---------------------------------------------------------------------------
-# Patched _log that also pushes to the active WebSocket
+# Patched _log that also pushes to the active WebSocket and writes to file
 # ---------------------------------------------------------------------------
 _active_ws: Optional[WebSocket] = None
 _active_loop: Optional[asyncio.AbstractEventLoop] = None
+_active_log_file = None
+_log_file_path = None
 
 _original_node_log = None
 _original_tool_log_inv = None
@@ -75,11 +80,18 @@ _original_tool_log_dos = None
 
 
 def _make_ws_log(agent_label: str, original_fn):
-    """Create a patched log function that also sends WS events."""
+    """Create a patched log function that also sends WS events and writes to log file."""
     def _patched(agent_or_name: str, message: str):
         # Call original
         if original_fn:
             original_fn(agent_or_name, message)
+        # Write to log file
+        if _active_log_file:
+            try:
+                _active_log_file.write(f"{agent_or_name}\n{message}\n")
+                _active_log_file.flush()
+            except Exception:
+                pass
         # Send to WS if connected
         if _active_ws and _active_loop:
             try:
@@ -96,11 +108,19 @@ def _make_ws_log(agent_label: str, original_fn):
 
 
 def _patch_loggers(ws: WebSocket, loop: asyncio.AbstractEventLoop):
-    """Monkey-patch the _log / _tool_log functions to pipe to WS."""
-    global _active_ws, _active_loop
+    """Monkey-patch the _log / _tool_log functions to pipe to WS and file."""
+    global _active_ws, _active_loop, _active_log_file, _log_file_path
     global _original_node_log, _original_tool_log_inv, _original_tool_log_dos
     _active_ws = ws
     _active_loop = loop
+    
+    # Create timestamped log file
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    logs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    _log_file_path = os.path.join(logs_dir, f"investigation_{timestamp}.txt")
+    _active_log_file = open(_log_file_path, "w", encoding="utf-8")
+    print(f"[API] Logging to: logs/investigation_{timestamp}.txt")
 
     import agents.nodes as nodes_mod
     import agents.tools_investigation as tinv
@@ -117,7 +137,7 @@ def _patch_loggers(ws: WebSocket, loop: asyncio.AbstractEventLoop):
 
 
 def _unpatch_loggers():
-    global _active_ws, _active_loop
+    global _active_ws, _active_loop, _active_log_file, _log_file_path
     import agents.nodes as nodes_mod
     import agents.tools_investigation as tinv
     import agents.tools_dossier as tdos
@@ -126,6 +146,16 @@ def _unpatch_loggers():
         nodes_mod._log = _original_node_log
         tinv._tool_log = _original_tool_log_inv
         tdos._tool_log = _original_tool_log_dos
+
+    # Close log file
+    if _active_log_file:
+        try:
+            _active_log_file.close()
+            print(f"[API] Logs saved to: {_log_file_path}")
+        except Exception:
+            pass
+        _active_log_file = None
+        _log_file_path = None
 
     _active_ws = None
     _active_loop = None
@@ -243,7 +273,7 @@ def _run_investigation_sync(ws: WebSocket, loop: asyncio.AbstractEventLoop):
                 gaps = node_state.get("findings", {}).get("evidence_gaps", "")
                 send("dossier_rejected", {
                     "message": "Dossier rejected the investigation — evidence is INSUFFICIENT. Looping back to investigation.",
-                    "evidence_gaps": gaps[:600] if gaps else "",
+                    "evidence_gaps": gaps,
                 })
             else:
                 send("dossier_accepted", {
@@ -483,7 +513,11 @@ async def ws_investigate(ws: WebSocket):
         await ws_send(ws, "status", {"message": "Investigation starting..."})
 
         # Run the graph in a background thread so the WS stays responsive
-        await asyncio.to_thread(_run_investigation_sync, ws, loop)
+        if is_demo_mode():
+            print("[API] *** DEMO MODE — using scripted investigation ***")
+            await asyncio.to_thread(run_demo_investigation_sync, ws, loop)
+        else:
+            await asyncio.to_thread(_run_investigation_sync, ws, loop)
 
     except WebSocketDisconnect:
         print("[API] WebSocket disconnected")

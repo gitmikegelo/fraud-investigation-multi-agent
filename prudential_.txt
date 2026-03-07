@@ -1,0 +1,114 @@
+No. And the distinction matters.
+
+What This System Was Built For
+This is healthcare provider fraud detection — CPT codes, E&M levels, CMS billing rules, provider peer comparison, upcoding rings. That's health insurance payer work. Think Anthem, UnitedHealthcare, Humana, CMS/Medicare.
+
+What Prudential Actually Does
+Prudential is primarily life insurance, disability, annuities, and group benefits. Their fraud landscape is completely different.
+
+Prudential's Actual Fraud Types
+Life Insurance Fraud:
+
+Misrepresentation on applications (hiding medical history, smoking status)
+Stranger-originated life insurance (STOLI)
+Staged deaths or fake death certificates
+Beneficiary fraud (forged documents, impersonation)
+Premium diversion by agents
+Disability Claims Fraud (probably their biggest SIU workload):
+
+Claimant says they can't work but they're running a business
+Exaggerated symptoms that don't match surveillance
+Friendly doctors writing indefinite disability letters
+Claimant working under the table while collecting benefits
+Group Benefits Fraud:
+
+Employees adding fake dependents
+Employers misclassifying workers to reduce premiums
+Dental/vision claims for services not rendered (if Prudential administers those)
+Agent/Producer Fraud:
+
+Churning policies for commissions
+Forging signatures on applications
+Misappropriating premium payments
+Selling unauthorized products
+How a Prudential Fraud Analyst Actually Works
+For disability claims (their bread and butter):
+
+1. Claim comes in — claimant says they can't work due to 
+   back injury
+
+2. Claims examiner reviews:
+   - Medical records from treating physician
+   - Independent medical exam results
+   - Functional capacity evaluation
+   - Employer's job description (what physical demands?)
+   - Prior claim history with Prudential
+
+3. Red flags that trigger SIU referral:
+   - Claim filed right after policy purchase
+   - Claimant has history of multiple disability claims
+   - Medical documentation is thin or from a single provider
+   - Social media shows claimant doing activities inconsistent 
+     with claimed disability
+   - Claimant is uncooperative with IME scheduling
+
+4. SIU investigation:
+   - Surveillance (literally watching the claimant)
+   - Social media analysis (Facebook, Instagram, LinkedIn)
+   - Database checks (are they employed elsewhere?)
+   - Interviews with claimant, employer, treating physician
+   - Financial analysis (did their spending change?)
+For life insurance fraud:
+
+1. Death claim filed
+
+2. Claims examiner checks:
+   - Policy age (claims within contestability period get scrutiny)
+   - Cause of death vs what was disclosed on application
+   - Beneficiary relationship to insured
+   - Multiple policies across carriers (MIB database check)
+
+3. Red flags:
+   - Large policy purchased recently
+   - Insurable interest questions
+   - Death certificate from unfamiliar jurisdiction
+   - Beneficiary changed recently
+   - Application medical history doesn't match death cause
+What's Completely Different From Healthcare Fraud
+Healthcare Fraud	Prudential Fraud
+Provider is the bad actor	Claimant or agent is the bad actor
+High volume statistical patterns	Individual case investigation
+CPT codes and billing data	Medical records and surveillance
+Peer comparison across providers	Claimant behavior analysis
+Network analysis for rings	Social media and public records
+Automated detection at scale	Human judgment on individual claims
+What Would Actually Help a Prudential Analyst
+For disability claims:
+
+NLP that reads medical records and summarizes functional limitations
+Social media monitoring that flags activity inconsistent with claimed disability
+Pattern matching across their book (same doctor supporting multiple suspicious claims)
+Timeline analysis (when was policy purchased vs when was claim filed vs when did condition allegedly start)
+Predictive scoring on new claims (likelihood of fraud based on claim characteristics)
+For life insurance:
+
+Application-to-claims comparison (automated check of what was disclosed vs cause of death)
+MIB and prescription database cross-referencing
+Contestability period alert system
+Beneficiary change pattern detection
+For agent fraud:
+
+Lapse/replace ratio monitoring by agent
+Signature verification
+Premium payment tracking
+Customer complaint correlation
+Bottom Line
+The system in your logs is a healthcare payer fraud tool. If Prudential is your target, you'd need to redesign around:
+
+Individual claimant investigation instead of provider profiling
+Document analysis (medical records, death certificates, applications) instead of billing pattern statistics
+Behavioral indicators (social media, surveillance, employment checks) instead of CPT code analysis
+Policy lifecycle analysis (when purchased, when claimed, contestability) instead of peer comparison
+The agentic architecture could still work but the tools, data sources, and investigation logic would be entirely different. The workflow planning approach I described earlier still applies — just swap out every healthcare-specific element for the equivalent Prudential use case.
+
+If you're building this for Prudential specifically, you need a Prudential SIU analyst in the room from day one. Not a healthcare fraud SME. Different world.

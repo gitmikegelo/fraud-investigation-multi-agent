@@ -31,7 +31,7 @@ export default function Header({ status, phase, loopCount, elapsed, onStart }) {
             <path d="M8 14.5L12 18.5L20 10" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <span className="text-lg font-semibold tracking-tight" style={{ color: '#e2e8f0' }}>
-            Claims Copilot
+            ARIA
           </span>
         </div>
         <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--c-surface2)', color: 'var(--c-text-dim)' }}>

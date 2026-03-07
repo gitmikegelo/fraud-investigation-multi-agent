@@ -36,12 +36,12 @@ const EDGES = [
 ]
 
 const NODE_COLORS = {
-  start:         { bg: '#1e293b', border: '#475569', text: '#94a3b8' },
-  analysis:      { bg: '#3b0764', border: '#a855f7', text: '#d8b4fe' },
-  orchestrator:  { bg: '#172554', border: '#3b82f6', text: '#93c5fd' },
-  investigation: { bg: '#14532d', border: '#22c55e', text: '#86efac' },
-  dossier:       { bg: '#451a03', border: '#f59e0b', text: '#fcd34d' },
-  end:           { bg: '#1e293b', border: '#475569', text: '#94a3b8' },
+  start:         { bg: '#f8fafc', border: '#94a3b8', text: '#475569' },
+  analysis:      { bg: '#faf5ff', border: '#a855f7', text: '#7c3aed' },
+  orchestrator:  { bg: '#eff6ff', border: '#3b82f6', text: '#1d4ed8' },
+  investigation: { bg: '#f0fdf4', border: '#22c55e', text: '#15803d' },
+  dossier:       { bg: '#fffbeb', border: '#f59e0b', text: '#b45309' },
+  end:           { bg: '#f8fafc', border: '#94a3b8', text: '#475569' },
 }
 
 const ACTIVE_GLOW = {
@@ -153,7 +153,7 @@ export default function GraphView({ activeNode, phase, nodeHistory, isRunning, i
 
   // Get the color for the active edge based on source node
   const getEdgeColor = (from, isActive) => {
-    if (!isActive) return '#2d3748'
+    if (!isActive) return '#cbd5e1'
     // Use the source node's color for the arrow
     if (from === 'start') return '#a855f7'
     if (from === 'analysis') return '#a855f7'
@@ -169,7 +169,7 @@ export default function GraphView({ activeNode, phase, nodeHistory, isRunning, i
   console.log('GraphView debug:', { nodeHistory, initialClaims, analysisComplete, activeNode })
 
   return (
-    <div className="w-full h-full flex" style={{ background: 'var(--c-bg)' }}>
+    <div className="w-full h-full flex" style={{ background: 'transparent' }}>
       {/* Initial Claims Panel - only shown after analysis completes */}
       {analysisComplete && initialClaims.length > 0 && (
         <div 
@@ -177,7 +177,8 @@ export default function GraphView({ activeNode, phase, nodeHistory, isRunning, i
           style={{ 
             width: '180px', 
             borderRight: '1px solid var(--c-border)',
-            background: 'var(--c-surface)'
+            background: 'var(--c-surface)',
+            borderRadius: '0'
           }}
         >
           <div className="text-xs font-semibold mb-2" style={{ color: 'var(--c-text-dim)' }}>
@@ -189,8 +190,8 @@ export default function GraphView({ activeNode, phase, nodeHistory, isRunning, i
                 key={claim.entity_id || i}
                 className="p-2 rounded text-xs"
                 style={{ 
-                  background: 'var(--c-bg)', 
-                  border: '1px solid var(--c-border)' 
+                  background: 'var(--c-surface2)', 
+                  border: '1px solid var(--c-border)'
                 }}
               >
                 <div className="font-medium truncate" style={{ color: 'var(--c-text)' }}>
@@ -201,8 +202,8 @@ export default function GraphView({ activeNode, phase, nodeHistory, isRunning, i
                   <span 
                     className="px-1 rounded text-[10px]"
                     style={{ 
-                      background: claim.anomaly_score >= 0.7 ? '#ef444420' : '#f59e0b20',
-                      color: claim.anomaly_score >= 0.7 ? '#ef4444' : '#f59e0b'
+                      background: claim.anomaly_score >= 0.7 ? 'var(--c-red-bg)' : 'var(--c-amber-bg)',
+                      color: claim.anomaly_score >= 0.7 ? 'var(--c-red)' : 'var(--c-amber)'
                     }}
                   >
                     {claim.anomaly_score >= 0.7 ? 'HIGH' : 'MED'}
@@ -291,11 +292,11 @@ export default function GraphView({ activeNode, phase, nodeHistory, isRunning, i
                 d={path}
                 fill="none"
                 stroke={edgeColor}
-                strokeWidth={isActive ? 3 : 1.5}
+                strokeWidth={isActive ? 2.5 : 1.5}
                 className={isActive ? 'edge-active' : ''}
                 markerEnd={arrowMarker}
                 filter={isActive ? glowFilter : undefined}
-                opacity={isActive ? 1 : 0.4}
+                opacity={isActive ? 1 : 0.55}
               />
               {/* Edge label */}
               {edge.label && (() => {
@@ -318,7 +319,7 @@ export default function GraphView({ activeNode, phase, nodeHistory, isRunning, i
                     x={lx}
                     y={ly}
                     textAnchor="middle"
-                    fill={isActive ? edgeColor : '#4a5568'}
+                    fill={isActive ? edgeColor : '#94a3b8'}
                     fontSize="9"
                     fontWeight={isActive ? '600' : '400'}
                   >
@@ -367,7 +368,7 @@ export default function GraphView({ activeNode, phase, nodeHistory, isRunning, i
                 height={h}
                 rx={rx}
                 fill={colors.bg}
-                stroke={isActive ? ACTIVE_GLOW[node.id] || colors.border : isVisited ? colors.border : '#2d3748'}
+                stroke={isActive ? ACTIVE_GLOW[node.id] || colors.border : isVisited ? colors.border : '#e2e8f0'}
                 strokeWidth={isActive ? 2.5 : 1.5}
                 filter={isActive && ACTIVE_GLOW[node.id] ? `url(#glow-${node.id})` : undefined}
                 opacity={isActive ? 1 : isVisited ? 0.9 : 0.6}
@@ -379,7 +380,7 @@ export default function GraphView({ activeNode, phase, nodeHistory, isRunning, i
                 y={node.y + (isTerminal ? 1 : -3)}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fill={isActive ? '#ffffff' : colors.text}
+                fill={isActive ? colors.bg : colors.text}
                 fontSize={isTerminal ? '10' : '12'}
                 fontWeight="600"
               >

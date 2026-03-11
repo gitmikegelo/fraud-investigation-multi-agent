@@ -8,8 +8,8 @@ by the LangGraph agents.
 
 import os
 import sys
-from dataclasses import dataclass
-from typing import Dict, Optional
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 import pandas as pd
 import networkx as nx
 
@@ -21,6 +21,8 @@ from data.features import compute_all_features
 from data.anomaly import compute_all_anomaly_scores
 from data.graph import build_claims_graph, find_connections, find_rings, get_ring_edges, get_referral_history
 from billing_rules.index import get_billing_rules_index, search_billing_rules
+from data.generate_disability import generate_disability_data, DisabilityClaim
+from cases import Case
 import pickle
 
 
@@ -39,6 +41,8 @@ class DataContext:
     z_scores_df: pd.DataFrame
     anomaly_scores_df: pd.DataFrame
     graph: nx.DiGraph
+    disability_claims: List[DisabilityClaim] = field(default_factory=list)
+    case_queue: List[Case] = field(default_factory=list)
     
     def get_high_anomaly_providers(self, threshold: float = 0.5) -> pd.DataFrame:
         """Get providers with anomaly score above threshold."""
@@ -161,8 +165,18 @@ def initialize_data(force_regenerate: bool = False) -> DataContext:
     graph = build_claims_graph(claims_df, anomaly_scores_df)
     
     # Step 5: Initialize billing rules
-    print("\n[5/5] Initializing billing rules index...")
+    print("\n[5/7] Initializing billing rules index...")
     _ = get_billing_rules_index()
+    
+    # Step 6: Generate disability data
+    print("\n[6/7] Generating disability claims...")
+    disability_claims = generate_disability_data()
+    
+    # Step 7: Build case queue
+    print("\n[7/7] Building case queue...")
+    from case_queue import build_case_queue
+    case_queue = build_case_queue(anomaly_scores_df, provider_features_df, disability_claims)
+    print(f"  → {len(case_queue)} cases in queue")
     
     # Create context
     ctx = DataContext(
@@ -175,7 +189,9 @@ def initialize_data(force_regenerate: bool = False) -> DataContext:
         peer_stats_df=peer_stats_df,
         z_scores_df=z_scores_df,
         anomaly_scores_df=anomaly_scores_df,
-        graph=graph
+        graph=graph,
+        disability_claims=disability_claims,
+        case_queue=case_queue,
     )
     
     # Save to cache

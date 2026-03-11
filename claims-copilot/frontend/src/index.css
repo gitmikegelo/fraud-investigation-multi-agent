@@ -85,6 +85,22 @@ body {
 }
 .log-entry { animation: fade-in-up 0.2s ease-out; }
 
+/* ── Chat markdown ───────────────────────────────────────────────────── */
+.chat-markdown p       { margin: 0.3rem 0; }
+.chat-markdown ul      { padding-left: 1.25rem; margin: 0.3rem 0; }
+.chat-markdown ol      { padding-left: 1.25rem; margin: 0.3rem 0; }
+.chat-markdown li      { margin: 0.15rem 0; }
+.chat-markdown strong  { font-weight: 600; color: var(--c-text); }
+.chat-markdown code    { background: rgba(99,102,241,0.08); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
+.chat-markdown pre     { background: var(--c-surface2); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 0.85em; border: 1px solid var(--c-border); margin: 0.4rem 0; }
+.chat-markdown table   { width: 100%; border-collapse: collapse; margin: 0.4rem 0; font-size: 0.85em; }
+.chat-markdown th      { padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--c-border2); font-weight: 600; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--c-text-dim); }
+.chat-markdown td      { padding: 4px 8px; border-bottom: 1px solid var(--c-border); }
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { margin: 0.5rem 0 0.25rem; font-weight: 600; }
+.chat-markdown h1      { font-size: 1.1em; }
+.chat-markdown h2      { font-size: 1em; }
+.chat-markdown h3      { font-size: 0.95em; color: var(--c-text-dim); }
+
 /* ── Dossier — screen markdown ───────────────────────────────────────── */
 .dossier-content h1 {
   font-size: 1.4rem; font-weight: 700;

@@ -3,6 +3,8 @@ import GraphView from './components/GraphView'
 import EventTimeline from './components/EventTimeline'
 import DossierPanel from './components/DossierPanel'
 import NetworkGraph from './components/NetworkGraph'
+import CaseQueue from './components/CaseQueue'
+import ChatPanel from './components/ChatPanel'
 import { useInvestigation } from './hooks/useInvestigation'
 
 // ── SVG Icons ──────────────────────────────────────────────────────────────
@@ -34,12 +36,33 @@ const IconActivity = () => (
     <polyline points="1,8 3.5,4.5 6,8 9,3 11.5,7 14,5"/>
   </svg>
 )
+const IconQueue = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+    <rect x="1.5" y="1.5" width="12" height="3" rx="1"/>
+    <rect x="1.5" y="6" width="12" height="3" rx="1"/>
+    <rect x="1.5" y="10.5" width="12" height="3" rx="1"/>
+  </svg>
+)
+const IconChat = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2.5 1.5h10a1.5 1.5 0 011.5 1.5v6a1.5 1.5 0 01-1.5 1.5H5l-3 3V3A1.5 1.5 0 013.5 1.5z"/>
+    <line x1="5" y1="5.5" x2="10" y2="5.5"/><line x1="5" y1="8" x2="8" y2="8"/>
+  </svg>
+)
+const IconScan = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+    <circle cx="7.5" cy="7.5" r="5.5"/>
+    <path d="M7.5 4v3.5l2.5 2"/>
+  </svg>
+)
 
 const NAV = [
-  { id: 'overview',  label: 'Overview',      Icon: IconGrid },
-  { id: 'dossier',   label: 'Dossier',        Icon: IconFile },
-  { id: 'network',   label: 'Fraud Network',  Icon: IconHub },
-  { id: 'activity',  label: 'Activity',       Icon: IconActivity },
+  { id: 'queue',    label: 'Case Queue',    Icon: IconQueue },
+  { id: 'copilot',  label: 'Copilot',       Icon: IconChat },
+  { id: 'auto',     label: 'Auto Scan',     Icon: IconScan },
+  { id: 'dossier',  label: 'Dossier',       Icon: IconFile },
+  { id: 'network',  label: 'Fraud Network', Icon: IconHub },
+  { id: 'activity', label: 'Activity',      Icon: IconActivity },
 ]
 
 const PHASE_COLOR = {
@@ -58,7 +81,8 @@ export default function App() {
     dossier, findings, result, startInvestigation, nodeHistory, elapsed, initialClaims,
   } = useInvestigation()
 
-  const [activeView, setActiveView] = useState('overview')
+  const [activeView, setActiveView] = useState('queue')
+  const [selectedCase, setSelectedCase] = useState(null)
   const isRunning = status === 'running' || status === 'connecting'
   const isComplete = status === 'complete'
   const phaseColor = PHASE_COLOR[phase] || '#6366f1'
@@ -268,7 +292,23 @@ export default function App() {
 
         {/* View content */}
         <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
-          {activeView === 'overview' && (
+          {activeView === 'queue' && (
+            <CaseQueue onSelectCase={(c) => { setSelectedCase(c); setActiveView('copilot') }} />
+          )}
+          {activeView === 'copilot' && selectedCase && (
+            <ChatPanel
+              caseId={selectedCase.case_id}
+              caseType={selectedCase.case_type}
+              caseSummary={selectedCase}
+              onBack={() => setActiveView('queue')}
+            />
+          )}
+          {activeView === 'copilot' && !selectedCase && (
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--c-text-dim)', fontSize: 13 }}>
+              Select a case from the queue to start investigating.
+            </div>
+          )}
+          {activeView === 'auto' && (
             <OverviewView
               activeNode={activeNode} phase={phase} nodeHistory={nodeHistory}
               isRunning={isRunning} initialClaims={initialClaims}

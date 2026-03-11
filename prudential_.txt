@@ -82,7 +82,10 @@ CPT codes and billing data	Medical records and surveillance
 Peer comparison across providers	Claimant behavior analysis
 Network analysis for rings	Social media and public records
 Automated detection at scale	Human judgment on individual claims
+
+
 What Would Actually Help a Prudential Analyst
+
 For disability claims:
 
 NLP that reads medical records and summarizes functional limitations

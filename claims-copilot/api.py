@@ -24,8 +24,11 @@ from demo_runner import run_demo_investigation_sync
 from main import initialize_data, DataContext
 from agents.tools_investigation import set_context as set_investigation_context
 from agents.tools_dossier import set_context as set_dossier_context
+from agents.tools_disability import set_context as set_disability_context
+from agents.copilot import handle_analyst_message_sync
 from agents.nodes import clear_agent_caches
 from data.graph import find_connections, find_rings, get_ring_edges
+from cases import CaseStatus
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +45,7 @@ async def lifespan(app: FastAPI):
     data_ctx = initialize_data()
     set_investigation_context(data_ctx)
     set_dossier_context(data_ctx)
+    set_disability_context(data_ctx)
     print("[API] Data context ready.")
     yield
 
@@ -487,6 +491,160 @@ async def fraud_network(
         "nodes": nodes_out,
         "edges": edges_out,
     }
+
+
+# ---------------------------------------------------------------------------
+# Case Queue REST endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/cases")
+async def get_cases(
+    case_type: Optional[str] = None,
+    status: Optional[str] = None,
+    priority: Optional[str] = None,
+):
+    """Return case queue with optional filters."""
+    if not data_ctx:
+        return {"error": "Data not loaded"}
+
+    cases = list(data_ctx.case_queue)
+
+    if case_type:
+        cases = [c for c in cases if c.case_type.value == case_type]
+    if status:
+        cases = [c for c in cases if c.status.value == status]
+    if priority:
+        cases = [c for c in cases if c.priority.value == priority]
+
+    cases_json = [
+        {
+            "case_id": c.case_id,
+            "case_type": c.case_type.value,
+            "subject_id": c.subject_id,
+            "subject_name": c.subject_name,
+            "priority": c.priority.value,
+            "flag_reason": c.flag_reason,
+            "status": c.status.value,
+            "created_at": c.created_at.isoformat(),
+            "key_metrics": c.key_metrics,
+            "summary": c.summary,
+        }
+        for c in cases
+    ]
+
+    by_type = {}
+    by_priority = {}
+    for c in data_ctx.case_queue:
+        by_type[c.case_type.value] = by_type.get(c.case_type.value, 0) + 1
+        by_priority[c.priority.value] = by_priority.get(c.priority.value, 0) + 1
+
+    return {
+        "cases": cases_json,
+        "counts": {
+            "total": len(data_ctx.case_queue),
+            "by_type": by_type,
+            "by_priority": by_priority,
+        },
+    }
+
+
+@app.post("/api/cases/{case_id}/status")
+async def update_case_status(case_id: str, body: dict):
+    """Update case status."""
+    case = next((c for c in data_ctx.case_queue if c.case_id == case_id), None)
+    if not case:
+        return {"error": f"Case {case_id} not found"}
+    new_status = body.get("status")
+    try:
+        case.status = CaseStatus(new_status)
+    except ValueError:
+        return {"error": f"Invalid status: {new_status}"}
+    return {"case_id": case_id, "status": case.status.value}
+
+
+@app.get("/api/cases/{case_id}")
+async def get_case_detail(case_id: str):
+    """Return full case detail."""
+    case = next((c for c in data_ctx.case_queue if c.case_id == case_id), None)
+    if not case:
+        return {"error": f"Case {case_id} not found"}
+    return {
+        "case_id": case.case_id,
+        "case_type": case.case_type.value,
+        "subject_id": case.subject_id,
+        "subject_name": case.subject_name,
+        "priority": case.priority.value,
+        "flag_reason": case.flag_reason,
+        "status": case.status.value,
+        "created_at": case.created_at.isoformat(),
+        "key_metrics": case.key_metrics,
+        "summary": case.summary,
+        "investigation_history": case.investigation_history,
+        "dossier": case.dossier,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Chat WebSocket – persistent analyst conversation with copilot
+# ---------------------------------------------------------------------------
+@app.websocket("/ws/chat/{case_id}")
+async def chat_websocket(websocket: WebSocket, case_id: str):
+    await websocket.accept()
+
+    case = next((c for c in data_ctx.case_queue if c.case_id == case_id), None)
+    if not case:
+        await websocket.send_json({"type": "error", "message": f"Case {case_id} not found"})
+        await websocket.close()
+        return
+
+    await websocket.send_json({
+        "type": "connected",
+        "case_id": case_id,
+        "case_type": case.case_type.value,
+        "timestamp": datetime.now().isoformat(),
+    })
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+
+            if data.get("action") == "end_session":
+                break
+
+            if data.get("action") == "message":
+                analyst_text = data.get("text", "")
+                if not analyst_text:
+                    continue
+
+                await websocket.send_json({
+                    "type": "thinking",
+                    "timestamp": datetime.now().isoformat(),
+                })
+
+                try:
+                    response = await asyncio.to_thread(
+                        handle_analyst_message_sync,
+                        case_id=case_id,
+                        case_type=case.case_type.value,
+                        analyst_message=analyst_text,
+                        subject_id=case.subject_id,
+                        subject_name=case.subject_name,
+                        flag_reason=case.flag_reason,
+                    )
+                except Exception as e:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": str(e)[:500],
+                        "timestamp": datetime.now().isoformat(),
+                    })
+                    continue
+
+                await websocket.send_json({
+                    "type": "response",
+                    "text": response,
+                    "timestamp": datetime.now().isoformat(),
+                })
+    except WebSocketDisconnect:
+        pass
 
 
 # ---------------------------------------------------------------------------

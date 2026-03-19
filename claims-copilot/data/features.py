@@ -1,341 +1,161 @@
 """
-Feature computation module for Claims Investigation Copilot.
-Computes provider-level and member-level features for anomaly detection.
+Feature engineering for Prudential life insurance investigation.
+Computes agent-level and policy-level features for anomaly detection.
 """
 
 import pandas as pd
 import numpy as np
-from typing import Tuple
 from datetime import datetime
 
 
-def compute_provider_features(
-    claims_df: pd.DataFrame,
-    providers_df: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Compute provider-level features for anomaly detection.
-    
-    Features:
-    - claims_per_month: Average claims submitted per month
-    - unique_patients_per_month: Average unique patients seen per month
-    - claims_per_patient: Average claims per patient
-    - pct_high_complexity: % E&M codes at 99214/99215
-    - avg_billed_per_claim: Average billed amount per claim
-    - top_cpt_concentration: % claims using most common CPT
-    - weekend_billing_rate: % of claims on weekends
-    - avg_patients_per_day: Average unique patients per service day
-    - duplicate_claim_rate: % of potential duplicate claims
-    - same_patient_same_day_rate: Rate of multiple claims for same patient same day
-    - referral_concentration: % referrals from top 3 sources
-    - referral_source_count: Number of unique referral sources
-    - out_of_specialty_rate: % of claims for CPTs outside typical specialty
-    """
-    
-    # Get date range for monthly calculations
-    min_date = claims_df['service_date'].min()
-    max_date = claims_df['service_date'].max()
-    months_span = max((max_date - min_date).days / 30, 1)
-    
-    features_list = []
-    
-    for provider_id in providers_df['provider_id'].unique():
-        provider_claims = claims_df[claims_df['provider_id'] == provider_id]
-        
-        if len(provider_claims) == 0:
+def compute_agent_features(policies_df, agents_df, transactions_df, claims_df):
+    """Compute per-agent features for anomaly detection."""
+    now = datetime(2026, 3, 1)
+    rows = []
+    for _, agt in agents_df.iterrows():
+        aid = agt["agent_id"]
+        agt_pols = policies_df[policies_df["agent_id"] == aid]
+        agt_claims = claims_df[claims_df["agent_id"] == aid]
+        agt_txns = transactions_df[transactions_df["policy_id"].isin(agt_pols["policy_id"])]
+
+        n_policies = len(agt_pols)
+        if n_policies == 0:
             continue
-        
-        provider_info = providers_df[providers_df['provider_id'] == provider_id].iloc[0]
-        
-        # Basic volume metrics
-        total_claims = len(provider_claims)
-        unique_patients = provider_claims['member_id'].nunique()
-        
-        claims_per_month = total_claims / months_span
-        unique_patients_per_month = unique_patients / months_span
-        claims_per_patient = total_claims / max(unique_patients, 1)
-        
-        # Complexity metrics (E&M codes)
-        high_complexity_codes = ['99214', '99215']
-        em_codes = ['99211', '99212', '99213', '99214', '99215']
-        em_claims = provider_claims[provider_claims['cpt_code'].isin(em_codes)]
-        high_complexity_claims = provider_claims[provider_claims['cpt_code'].isin(high_complexity_codes)]
-        
-        pct_high_complexity = (
-            len(high_complexity_claims) / len(em_claims) 
-            if len(em_claims) > 0 else 0
-        )
-        
-        # Billing metrics
-        avg_billed_per_claim = provider_claims['billed_amount'].mean()
-        total_billed = provider_claims['billed_amount'].sum()
-        
-        # CPT concentration
-        cpt_counts = provider_claims['cpt_code'].value_counts()
-        top_cpt_concentration = cpt_counts.iloc[0] / total_claims if len(cpt_counts) > 0 else 0
-        
-        # Weekend billing
-        provider_claims = provider_claims.copy()
-        provider_claims['is_weekend'] = provider_claims['service_date'].dt.dayofweek >= 5
-        weekend_billing_rate = provider_claims['is_weekend'].mean()
-        
-        # Patients per day
-        daily_patients = provider_claims.groupby('service_date')['member_id'].nunique()
-        avg_patients_per_day = daily_patients.mean() if len(daily_patients) > 0 else 0
-        
-        # Duplicate claim detection (same patient, same CPT, same day)
-        provider_claims['dup_key'] = (
-            provider_claims['member_id'] + '_' + 
-            provider_claims['cpt_code'] + '_' + 
-            provider_claims['service_date'].astype(str)
-        )
-        dup_counts = provider_claims['dup_key'].value_counts()
-        duplicate_claim_rate = (dup_counts > 1).sum() / len(dup_counts) if len(dup_counts) > 0 else 0
-        
-        # Same patient same day (any CPT)
-        provider_claims['day_patient_key'] = (
-            provider_claims['member_id'] + '_' + 
-            provider_claims['service_date'].astype(str)
-        )
-        day_patient_counts = provider_claims['day_patient_key'].value_counts()
-        same_patient_same_day_rate = (day_patient_counts > 1).sum() / len(day_patient_counts) if len(day_patient_counts) > 0 else 0
-        
-        # Referral metrics (claims where this provider received referrals)
-        referred_to_provider = claims_df[claims_df['provider_id'] == provider_id]
-        referral_sources = referred_to_provider[
-            referred_to_provider['referring_provider_id'].notna()
-        ]['referring_provider_id']
-        
-        referral_source_count = referral_sources.nunique()
-        
-        if len(referral_sources) > 0:
-            ref_counts = referral_sources.value_counts()
-            top_3_refs = ref_counts.head(3).sum()
-            referral_concentration = top_3_refs / len(referral_sources)
-        else:
-            referral_concentration = 0
-        
-        # Out of specialty rate (simplified - flag if using CPTs unusual for specialty)
-        # For now, just check if ortho providers are doing non-ortho codes
-        specialty = provider_info['specialty']
-        ortho_cpts = ['27447', '27130', '29881', '27446', '20610']
-        cardio_cpts = ['93000', '93306', '93458', '93010']
-        
-        if specialty == "Orthopedic Surgery":
-            specialty_claims = provider_claims[provider_claims['cpt_code'].isin(ortho_cpts)]
-            out_of_specialty_rate = 1 - (len(specialty_claims) / total_claims) if total_claims > 0 else 0
-        elif specialty == "Cardiology":
-            specialty_claims = provider_claims[provider_claims['cpt_code'].isin(cardio_cpts)]
-            out_of_specialty_rate = 1 - (len(specialty_claims) / total_claims) if total_claims > 0 else 0
-        else:
-            # For other specialties, assume mostly E&M codes
-            em_claims_count = len(provider_claims[provider_claims['cpt_code'].isin(em_codes)])
-            out_of_specialty_rate = 1 - (em_claims_count / total_claims) if total_claims > 0 else 0
-        
-        features_list.append({
-            'provider_id': provider_id,
-            'specialty': specialty,
-            'peer_group': provider_info['peer_group'],
-            'region': provider_info['region'],
-            'claims_per_month': round(claims_per_month, 2),
-            'unique_patients_per_month': round(unique_patients_per_month, 2),
-            'claims_per_patient': round(claims_per_patient, 2),
-            'pct_high_complexity': round(pct_high_complexity, 4),
-            'avg_billed_per_claim': round(avg_billed_per_claim, 2),
-            'top_cpt_concentration': round(top_cpt_concentration, 4),
-            'weekend_billing_rate': round(weekend_billing_rate, 4),
-            'avg_patients_per_day': round(avg_patients_per_day, 2),
-            'duplicate_claim_rate': round(duplicate_claim_rate, 4),
-            'same_patient_same_day_rate': round(same_patient_same_day_rate, 4),
-            'referral_concentration': round(referral_concentration, 4),
-            'referral_source_count': referral_source_count,
-            'out_of_specialty_rate': round(out_of_specialty_rate, 4),
-            'total_claims': total_claims,
-            'total_billed': round(total_billed, 2),
-            'unique_patients': unique_patients,
+
+        total_face = agt_pols["face_amount"].sum()
+        avg_face = agt_pols["face_amount"].mean()
+        contestable_pols = agt_pols[agt_pols["contestability_end"] >= now]
+        pct_contestable = len(contestable_pols) / n_policies if n_policies > 0 else 0
+        trust_owned_pct = agt_pols["trust_owned"].sum() / n_policies
+        premium_financed_pct = agt_pols["premium_financed"].sum() / n_policies if "premium_financed" in agt_pols.columns else 0
+        contestable_claims = len(agt_claims[agt_claims.get("within_contestability", pd.Series(dtype=bool)).fillna(False)])
+        claim_rate = len(agt_claims) / n_policies if n_policies > 0 else 0
+        high_face_pct = len(agt_pols[agt_pols["face_amount"] >= 1_000_000]) / n_policies
+        flagged_txns = len(agt_txns[agt_txns["flagged"]]) if "flagged" in agt_txns.columns else 0
+
+        # Replacement rate (policies on same policyholder)
+        ph_counts = agt_pols["policyholder_id"].value_counts()
+        replacement_rate = (ph_counts > 1).sum() / len(ph_counts) if len(ph_counts) > 0 else 0
+
+        rows.append({
+            "agent_id": aid,
+            "region": agt["region"],
+            "peer_group": agt["region"],
+            "n_policies": n_policies,
+            "total_face_amount": total_face,
+            "avg_face_amount": avg_face,
+            "pct_contestable": round(pct_contestable, 4),
+            "trust_owned_pct": round(trust_owned_pct, 4),
+            "premium_financed_pct": round(premium_financed_pct, 4),
+            "contestable_claims": contestable_claims,
+            "claim_rate": round(claim_rate, 4),
+            "high_face_pct": round(high_face_pct, 4),
+            "replacement_rate": round(replacement_rate, 4),
+            "flagged_txns": flagged_txns,
+            "complaints": agt["complaints"],
+            "tenure_years": agt["tenure_years"],
         })
-    
-    return pd.DataFrame(features_list)
+    return pd.DataFrame(rows)
 
 
-def compute_member_features(
-    claims_df: pd.DataFrame,
-    members_df: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Compute member-level features for anomaly detection.
-    
-    Features useful for detecting doctor shopping, excessive utilization, etc.
-    """
-    
-    min_date = claims_df['service_date'].min()
-    max_date = claims_df['service_date'].max()
-    months_span = max((max_date - min_date).days / 30, 1)
-    
-    features_list = []
-    
-    for member_id in members_df['member_id'].unique():
-        member_claims = claims_df[claims_df['member_id'] == member_id]
-        
-        if len(member_claims) == 0:
-            continue
-        
-        member_info = members_df[members_df['member_id'] == member_id].iloc[0]
-        
-        total_claims = len(member_claims)
-        unique_providers = member_claims['provider_id'].nunique()
-        unique_facilities = member_claims['facility_id'].nunique()
-        
-        claims_per_month = total_claims / months_span
-        providers_per_month = unique_providers / months_span
-        
-        # Spending
-        total_billed = member_claims['billed_amount'].sum()
-        avg_billed_per_claim = member_claims['billed_amount'].mean()
-        
-        # Provider diversity (high might indicate doctor shopping)
-        provider_concentration = 1 - (unique_providers / total_claims) if total_claims > 0 else 0
-        
-        # Same day multi-provider visits
-        member_claims = member_claims.copy()
-        daily_providers = member_claims.groupby('service_date')['provider_id'].nunique()
-        multi_provider_days = (daily_providers > 1).sum()
-        multi_provider_day_rate = multi_provider_days / len(daily_providers) if len(daily_providers) > 0 else 0
-        
-        # Pain management / controlled substance indicators
-        pain_cpts = ['64493', '62322', '64635', '20610']
-        pain_claims = member_claims[member_claims['cpt_code'].isin(pain_cpts)]
-        pain_management_rate = len(pain_claims) / total_claims if total_claims > 0 else 0
-        
-        # Geographic spread
-        unique_regions = claims_df[claims_df['member_id'] == member_id].merge(
-            members_df[['member_id', 'region']], on='member_id', how='left'
-        )['region'].nunique()
-        
-        features_list.append({
-            'member_id': member_id,
-            'age': member_info['age'],
-            'gender': member_info['gender'],
-            'region': member_info['region'],
-            'claims_per_month': round(claims_per_month, 2),
-            'unique_providers': unique_providers,
-            'unique_facilities': unique_facilities,
-            'providers_per_month': round(providers_per_month, 2),
-            'total_billed': round(total_billed, 2),
-            'avg_billed_per_claim': round(avg_billed_per_claim, 2),
-            'provider_concentration': round(provider_concentration, 4),
-            'multi_provider_day_rate': round(multi_provider_day_rate, 4),
-            'pain_management_rate': round(pain_management_rate, 4),
-            'total_claims': total_claims,
+def compute_policy_features(policies_df, transactions_df, mib_df, rx_df, claims_df):
+    """Compute per-policy features for contestability analysis."""
+    now = datetime(2026, 3, 1)
+    rows = []
+    for _, pol in policies_df.iterrows():
+        pid = pol["policy_id"]
+        phid = pol["policyholder_id"]
+        pol_txns = transactions_df[transactions_df["policy_id"] == pid]
+        ph_mib = mib_df[mib_df["policyholder_id"] == phid] if len(mib_df) > 0 else pd.DataFrame()
+        ph_rx = rx_df[rx_df["policyholder_id"] == phid] if len(rx_df) > 0 else pd.DataFrame()
+        pol_claims = claims_df[claims_df["policy_id"] == pid]
+
+        disclosed = pol.get("disclosed_conditions", [])
+        if not isinstance(disclosed, list):
+            disclosed = []
+        n_disclosed = len(disclosed)
+        n_mib = len(ph_mib)
+        n_rx = len(ph_rx)
+        undisclosed_count = max(0, n_mib - n_disclosed)
+
+        days_since_issue = (now - pol["issue_date"]).days
+        is_contestable = pol["contestability_end"] >= now
+        days_remaining = max(0, (pol["contestability_end"] - now).days) if is_contestable else 0
+
+        third_party_payments = len(pol_txns[pol_txns["source"] != "policyholder"]) if "source" in pol_txns.columns else 0
+        flagged_txn_count = len(pol_txns[pol_txns["flagged"]]) if "flagged" in pol_txns.columns else 0
+        has_claim = len(pol_claims) > 0
+
+        rows.append({
+            "policy_id": pid,
+            "policyholder_id": phid,
+            "agent_id": pol["agent_id"],
+            "face_amount": pol["face_amount"],
+            "days_since_issue": days_since_issue,
+            "is_contestable": is_contestable,
+            "days_remaining": days_remaining,
+            "n_disclosed": n_disclosed,
+            "n_mib_codes": n_mib,
+            "n_rx_records": n_rx,
+            "undisclosed_count": undisclosed_count,
+            "trust_owned": bool(pol.get("trust_owned", False)),
+            "premium_financed": bool(pol.get("premium_financed", False)),
+            "third_party_payments": third_party_payments,
+            "flagged_txn_count": flagged_txn_count,
+            "has_claim": has_claim,
         })
-    
-    return pd.DataFrame(features_list)
+    return pd.DataFrame(rows)
 
 
-def compute_peer_statistics(
-    provider_features_df: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Compute peer group statistics for comparison.
-    Used for z-score calculations.
-    """
-    
-    numeric_cols = [
-        'claims_per_month', 'unique_patients_per_month', 'claims_per_patient',
-        'pct_high_complexity', 'avg_billed_per_claim', 'top_cpt_concentration',
-        'weekend_billing_rate', 'avg_patients_per_day', 'duplicate_claim_rate',
-        'same_patient_same_day_rate', 'referral_concentration', 'referral_source_count',
-        'out_of_specialty_rate'
-    ]
-    
-    peer_stats = provider_features_df.groupby('peer_group')[numeric_cols].agg(['mean', 'std'])
-    peer_stats.columns = ['_'.join(col).strip() for col in peer_stats.columns.values]
-    peer_stats = peer_stats.reset_index()
-    
-    return peer_stats
-
-
-def calculate_z_scores(
-    provider_features_df: pd.DataFrame,
-    peer_stats_df: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Calculate z-scores for each provider compared to their peer group.
-    """
-    
+def compute_peer_stats(agent_features_df):
+    """Compute peer group statistics for agents by region."""
     metrics = [
-        'claims_per_month', 'unique_patients_per_month', 'claims_per_patient',
-        'pct_high_complexity', 'avg_billed_per_claim', 'top_cpt_concentration',
-        'weekend_billing_rate', 'avg_patients_per_day', 'duplicate_claim_rate',
-        'same_patient_same_day_rate', 'referral_concentration', 'out_of_specialty_rate'
+        "n_policies", "avg_face_amount", "claim_rate", "high_face_pct",
+        "trust_owned_pct", "premium_financed_pct", "replacement_rate",
+        "pct_contestable", "flagged_txns", "complaints",
     ]
-    
-    df = provider_features_df.merge(peer_stats_df, on='peer_group', how='left')
-    
-    z_scores = {}
-    for metric in metrics:
-        mean_col = f'{metric}_mean'
-        std_col = f'{metric}_std'
-        
-        if mean_col in df.columns and std_col in df.columns:
-            # Avoid division by zero
-            std_vals = df[std_col].replace(0, 1)
-            z_scores[f'{metric}_zscore'] = (df[metric] - df[mean_col]) / std_vals
-    
-    z_scores_df = pd.DataFrame(z_scores)
-    z_scores_df['provider_id'] = df['provider_id']
-    
-    return z_scores_df
+    stats = agent_features_df.groupby("peer_group")[metrics].agg(["mean", "std"]).reset_index()
+    stats.columns = ["peer_group"] + [f"{m}_{s}" for m in metrics for s in ["mean", "std"]]
+    # Fill NaN std with 1 to avoid division by zero
+    for col in stats.columns:
+        if col.endswith("_std"):
+            stats[col] = stats[col].fillna(1).replace(0, 1)
+    return stats
 
 
-def compute_all_features(
-    claims_df: pd.DataFrame,
-    providers_df: pd.DataFrame,
-    members_df: pd.DataFrame
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def compute_z_scores(agent_features_df, peer_stats_df):
+    """Compute z-scores for each agent vs peer group."""
+    metrics = [
+        "n_policies", "avg_face_amount", "claim_rate", "high_face_pct",
+        "trust_owned_pct", "premium_financed_pct", "replacement_rate",
+        "pct_contestable", "flagged_txns", "complaints",
+    ]
+    merged = agent_features_df.merge(peer_stats_df, on="peer_group", how="left")
+    for m in metrics:
+        mean_col = f"{m}_mean"
+        std_col = f"{m}_std"
+        if mean_col in merged.columns and std_col in merged.columns:
+            merged[f"{m}_z"] = (merged[m] - merged[mean_col]) / merged[std_col].replace(0, 1)
+    return merged
+
+
+def compute_all_features(policies_df, agents_df, policyholders_df, transactions_df, claims_df, mib_df, rx_df):
     """
-    Compute all features.
-    
-    Returns:
-        provider_features_df, member_features_df, peer_stats_df, z_scores_df
+    Main entry point. Returns:
+    (agent_features_df, policy_features_df, peer_stats_df, z_scores_df)
     """
-    
-    print("Computing provider features...")
-    provider_features_df = compute_provider_features(claims_df, providers_df)
-    
-    print("Computing member features...")
-    member_features_df = compute_member_features(claims_df, members_df)
-    
-    print("Computing peer statistics...")
-    peer_stats_df = compute_peer_statistics(provider_features_df)
-    
-    print("Computing z-scores...")
-    z_scores_df = calculate_z_scores(provider_features_df, peer_stats_df)
-    
-    print(f"\n=== Feature Computation Complete ===")
-    print(f"Provider features: {len(provider_features_df)} providers")
-    print(f"Member features: {len(member_features_df)} members")
-    print(f"Peer groups: {len(peer_stats_df)}")
-    
-    # Show network case stats
-    net_features = provider_features_df[provider_features_df['provider_id'] == 'P-6610']
-    if len(net_features) > 0:
-        print(f"\nNetwork case (P-6610) features:")
-        print(f"  CPT concentration: {net_features.iloc[0]['top_cpt_concentration']:.2%}")
-        print(f"  Referral concentration: {net_features.iloc[0]['referral_concentration']:.2%}")
-        print(f"  Total billed: ${net_features.iloc[0]['total_billed']:,.2f}")
-    
-    return provider_features_df, member_features_df, peer_stats_df, z_scores_df
+    print("  Computing agent features...")
+    agent_features_df = compute_agent_features(policies_df, agents_df, transactions_df, claims_df)
+    print(f"  → {len(agent_features_df)} agent feature rows")
 
+    print("  Computing policy features...")
+    policy_features_df = compute_policy_features(policies_df, transactions_df, mib_df, rx_df, claims_df)
+    print(f"  → {len(policy_features_df)} policy feature rows")
 
-if __name__ == "__main__":
-    from generate_synthetic import generate_all_data
-    
-    claims_df, providers_df, members_df, _ = generate_all_data()
-    
-    provider_features_df, member_features_df, peer_stats_df, z_scores_df = compute_all_features(
-        claims_df, providers_df, members_df
-    )
-    
-    print("\n=== Top 10 Providers by Total Billed ===")
-    print(provider_features_df.nlargest(10, 'total_billed')[['provider_id', 'specialty', 'total_billed', 'top_cpt_concentration']])
+    print("  Computing peer statistics...")
+    peer_stats_df = compute_peer_stats(agent_features_df)
+
+    print("  Computing z-scores...")
+    z_scores_df = compute_z_scores(agent_features_df, peer_stats_df)
+
+    return agent_features_df, policy_features_df, peer_stats_df, z_scores_df

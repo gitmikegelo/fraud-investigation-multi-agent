@@ -4,6 +4,9 @@ export function useCopilotChat(caseId) {
   const [messages, setMessages] = useState([])
   const [isThinking, setIsThinking] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
+  const [checklistState, setChecklistState] = useState(null)
+  const [checklistRunning, setChecklistRunning] = useState(false)
+  const [policyAlerts, setPolicyAlerts] = useState([])
   const wsRef = useRef(null)
   const reconnectTimer = useRef(null)
 
@@ -12,10 +15,6 @@ export function useCopilotChat(caseId) {
     const url = `ws://${window.location.hostname}:8000/ws/chat/${caseId}`
     const ws = new WebSocket(url)
     wsRef.current = ws
-
-    ws.onopen = () => {
-      // wait for server "connected" event
-    }
 
     ws.onmessage = (evt) => {
       let data
@@ -26,7 +25,7 @@ export function useCopilotChat(caseId) {
           setIsConnected(true)
           setMessages(prev => [...prev, {
             role: 'system',
-            text: `Connected to case ${data.case_id} (${data.case_type?.replace('_', ' ')})`,
+            text: `Connected — ${data.subject_name} | ${data.claim_type} | Risk: ${data.risk_score} (${data.risk_tier})`,
             timestamp: data.timestamp,
           }])
           break
@@ -58,6 +57,79 @@ export function useCopilotChat(caseId) {
           })
           break
 
+        case 'checklist_start':
+          setChecklistRunning(true)
+          setChecklistState({ steps: data.steps, summary: null })
+          setMessages(prev => [...prev, {
+            role: 'checklist',
+            steps: data.steps,
+            summary: null,
+            complete: false,
+            timestamp: data.timestamp,
+          }])
+          break
+
+        case 'checklist_step':
+          setChecklistState(prev => {
+            if (!prev) return prev
+            const steps = prev.steps.map(s =>
+              s.step_number === data.step_number
+                ? { ...s, ...data }
+                : s
+            )
+            return { ...prev, steps }
+          })
+          // Also update the checklist message in the messages array
+          setMessages(prev => {
+            const updated = [...prev]
+            for (let i = updated.length - 1; i >= 0; i--) {
+              if (updated[i].role === 'checklist') {
+                const steps = updated[i].steps.map(s =>
+                  s.step_number === data.step_number
+                    ? { ...s, ...data }
+                    : s
+                )
+                updated[i] = { ...updated[i], steps }
+                break
+              }
+            }
+            return updated
+          })
+          break
+
+        case 'checklist_complete':
+          setChecklistRunning(false)
+          setChecklistState(data.checklist)
+          setMessages(prev => {
+            const updated = [...prev]
+            for (let i = updated.length - 1; i >= 0; i--) {
+              if (updated[i].role === 'checklist') {
+                updated[i] = {
+                  ...updated[i],
+                  steps: data.checklist.steps,
+                  summary: data.checklist.summary,
+                  complete: true,
+                }
+                break
+              }
+            }
+            return updated
+          })
+          break
+
+        case 'checklist_update':
+          setChecklistState(data.checklist)
+          break
+
+        case 'policy_alert':
+          setPolicyAlerts(prev => [...prev, data.alert])
+          setMessages(prev => [...prev, {
+            role: 'system',
+            text: `⚠ Policy Alert: ${data.alert?.detail || 'Policy change detected'}`,
+            timestamp: data.timestamp,
+          }])
+          break
+
         case 'response':
           setIsThinking(false)
           setMessages(prev => [...prev, {
@@ -69,6 +141,7 @@ export function useCopilotChat(caseId) {
 
         case 'error':
           setIsThinking(false)
+          setChecklistRunning(false)
           setMessages(prev => [...prev, {
             role: 'system',
             text: `Error: ${data.message}`,
@@ -80,7 +153,6 @@ export function useCopilotChat(caseId) {
 
     ws.onclose = () => {
       setIsConnected(false)
-      // reconnect after 3s
       reconnectTimer.current = setTimeout(() => {
         if (wsRef.current?.readyState === WebSocket.CLOSED) {
           connect()
@@ -88,9 +160,7 @@ export function useCopilotChat(caseId) {
       }, 3000)
     }
 
-    ws.onerror = () => {
-      // onclose will fire after this
-    }
+    ws.onerror = () => {}
   }, [caseId])
 
   useEffect(() => {
@@ -114,9 +184,22 @@ export function useCopilotChat(caseId) {
     wsRef.current.send(JSON.stringify({ action: 'message', text }))
   }, [])
 
-  const clearMessages = useCallback(() => {
-    setMessages([])
+  const runChecklist = useCallback(() => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+    setMessages(prev => [...prev, {
+      role: 'analyst',
+      text: '▶ Run Full Checklist',
+      timestamp: new Date().toISOString(),
+    }])
+    wsRef.current.send(JSON.stringify({ action: 'run_checklist' }))
   }, [])
 
-  return { messages, isThinking, isConnected, sendMessage, clearMessages }
+  const clearMessages = useCallback(() => {
+    setMessages([])
+    setChecklistState(null)
+    setChecklistRunning(false)
+    setPolicyAlerts([])
+  }, [])
+
+  return { messages, isThinking, isConnected, checklistState, checklistRunning, policyAlerts, sendMessage, runChecklist, clearMessages }
 }

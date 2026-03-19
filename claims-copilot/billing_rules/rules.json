@@ -1,123 +1,218 @@
 {
   "rules": [
     {
-      "section_id": "CMS-27447-001",
-      "cpt_code": "27447",
-      "title": "Total Knee Arthroplasty (TKA) Medical Necessity",
-      "rule_text": "CPT 27447 (Total knee arthroplasty) is covered when the patient has documented severe osteoarthritis with: (1) radiographic evidence of joint space narrowing, (2) failure of conservative treatment for at least 3 months including physical therapy and/or NSAIDs, (3) significant functional impairment documented. Claims should include supporting ICD-10 codes M17.0-M17.12.",
-      "summary": "TKA requires documented OA, failed conservative treatment, and functional impairment.",
-      "fraud_indicators": ["High volume of 27447 without supporting documentation", "Lack of pre-operative conservative treatment claims", "Same patient receiving multiple TKAs in short timeframe"]
+      "rule_id": "R-001",
+      "title": "Excessive Dependents",
+      "rule_text": "A member enrolling more than 10 dependents under a single supplemental health policy is unusual and warrants investigation. Large dependent counts—especially on wellness or accident plans—may indicate fabricated dependents used to file multiple small claims.",
+      "summary": "More than 10 dependents under single member triggers BLOCK.",
+      "fraud_indicators": [
+        "Dependent count exceeds 10",
+        "Dependents added in rapid succession near open enrollment deadline",
+        "Multiple dependents sharing identical address or date of birth ranges",
+        "Claims filed for all dependents within short timeframe"
+      ],
+      "related_rules": ["R-002", "R-015"]
     },
     {
-      "section_id": "CMS-27447-002",
-      "cpt_code": "27447",
-      "title": "TKA Billing Frequency Standards",
-      "rule_text": "Total knee arthroplasty (CPT 27447) is a major surgical procedure. A provider performing TKA at rates significantly above peer specialty averages (>2 standard deviations) should be reviewed for potential upcoding or unbundling. Normal specialty benchmarks show TKA comprising 20-25% of orthopedic surgery claims.",
-      "summary": "TKA rates >2 SD above peers require review for upcoding.",
-      "fraud_indicators": ["TKA rate >40% of total claims", "Sudden increase in TKA billing", "TKA billed without associated pre/post-operative care"]
+      "rule_id": "R-002",
+      "title": "Rapid Dependent Filing",
+      "rule_text": "More than 5 dependent claims filed within 30 days under a single member indicates potential claim stacking or fabricated events.",
+      "summary": "More than 5 dependent claims in 30 days triggers BLOCK.",
+      "fraud_indicators": [
+        "Batch filing of dependent claims on same or consecutive days",
+        "All claims for similar amounts or same procedure codes",
+        "No prior claims history for these dependents"
+      ],
+      "related_rules": ["R-001", "R-015"]
     },
     {
-      "section_id": "OIG-UPCODING-001",
-      "cpt_code": null,
-      "title": "Upcoding - General Definition",
-      "rule_text": "Upcoding occurs when a provider bills for a more expensive service than was actually provided. This includes: (1) billing a higher-level E&M code than documentation supports, (2) billing for a more complex procedure when a simpler one was performed, (3) systematic pattern of billing at highest reimbursement levels. Statistical outliers (>2 SD from peers) warrant investigation.",
-      "summary": "Upcoding is billing for more expensive services than provided.",
-      "fraud_indicators": ["E&M distribution skewed toward 99214/99215", "Procedure mix inconsistent with patient acuity", "Documentation doesn't support billed level"]
+      "rule_id": "R-003",
+      "title": "Termination Rush Filing",
+      "rule_text": "Claims filed within 14 days of an employee's termination date may represent last-opportunity abuse — filing claims for services not rendered before coverage ends.",
+      "summary": "Claim filed within 14 days of termination triggers FLAG.",
+      "fraud_indicators": [
+        "Claim date falls just before termination effective date",
+        "Multiple claims filed in final days of coverage",
+        "No prior claims pattern from this member"
+      ],
+      "related_rules": ["R-009"]
     },
     {
-      "section_id": "OIG-KICKBACK-001",
-      "cpt_code": null,
-      "title": "Anti-Kickback Referral Patterns",
-      "rule_text": "The Anti-Kickback Statute prohibits offering, paying, soliciting, or receiving anything of value to induce referrals. Suspicious referral patterns include: (1) sudden shift in referral concentration to single provider, (2) referral rates inconsistent with patient needs, (3) referrals outside normal geographic or specialty patterns. Changes in referral concentration >50% within 6 months warrant investigation.",
-      "summary": "Sudden referral concentration shifts may indicate kickback arrangements.",
-      "fraud_indicators": ["Referral concentration shift >50%", "Referrals bypassing closer/appropriate providers", "Financial relationship between referrer and recipient"]
+      "rule_id": "R-004",
+      "title": "Recent Policy Change",
+      "rule_text": "Policy ownership or beneficiary changes within 90 days of a claim may indicate manipulation — especially for critical illness or accident indemnity plans.",
+      "summary": "Policy ownership/beneficiary changed within 90 days of claim triggers FLAG.",
+      "fraud_indicators": [
+        "Beneficiary changed to unrelated party shortly before claim",
+        "Policy upgrade to higher tier immediately before large claim",
+        "Coverage type changed to match upcoming claim type"
+      ],
+      "related_rules": ["R-009"]
     },
     {
-      "section_id": "CMS-EM-001",
-      "cpt_code": "99214",
-      "title": "E&M Level 4 Documentation Requirements",
-      "rule_text": "CPT 99214 (Office visit, established patient, moderate complexity) requires: (1) moderate level medical decision making, OR (2) 30-39 minutes total time on encounter date. Documentation must support either MDM complexity or time spent. Providers billing 99214 at rates >50% of E&M encounters should be reviewed.",
-      "summary": "99214 requires moderate MDM or 30-39 minutes documented time.",
-      "fraud_indicators": ["99214 rate >50% of E&M", "Documentation lacks MDM support", "Time not documented when billed by time"]
+      "rule_id": "R-005",
+      "title": "No Facility Record",
+      "rule_text": "Accident or hospital indemnity claims that cannot be matched to a facility admission record suggest possible phantom billing or fabricated events.",
+      "summary": "Accident/hospital claim with no matching facility record triggers FLAG.",
+      "fraud_indicators": [
+        "No hospital admission found for hospital indemnity claim",
+        "ER visit claimed but no emergency department record",
+        "Facility named does not exist in provider registry"
+      ],
+      "related_rules": ["R-011"]
     },
     {
-      "section_id": "CMS-EM-002",
-      "cpt_code": "99215",
-      "title": "E&M Level 5 Documentation Requirements",
-      "rule_text": "CPT 99215 (Office visit, established patient, high complexity) requires: (1) high level medical decision making, OR (2) 40-54 minutes total time. High MDM requires 2 of 3: (a) 4+ diagnoses/treatment options, (b) moderate+ data review, (c) high risk of morbidity. Providers with 99215 rates >15% of E&M require documentation audit.",
-      "summary": "99215 requires high MDM complexity or 40-54 minutes documented.",
-      "fraud_indicators": ["99215 rate >15% of E&M", "Patient population doesn't support high complexity", "Missing documentation elements"]
+      "rule_id": "R-006",
+      "title": "High-Volume Provider",
+      "rule_text": "Providers submitting more than 50 supplemental health claims in a 90-day window may be operating as a provider mill — generating unnecessary services to drive supplemental payouts.",
+      "summary": "Provider with >50 supplemental claims in 90 days triggers FLAG.",
+      "fraud_indicators": [
+        "Claim volume far exceeds peer providers in same specialty",
+        "Identical procedure codes across many patients",
+        "Claims concentrated on wellness exams or routine procedures",
+        "Patients traveling unusual distances to this provider"
+      ],
+      "related_rules": ["R-008"]
     },
     {
-      "section_id": "OIG-PHANTOM-001",
-      "cpt_code": null,
-      "title": "Phantom Billing Detection",
-      "rule_text": "Phantom billing involves billing for services never rendered. Indicators include: (1) billing without patient contact, (2) services to deceased patients, (3) services during patient hospitalization elsewhere, (4) impossible service volumes (>24 hours of services billed per day), (5) services to patients with no other healthcare utilization.",
-      "summary": "Phantom billing is charging for services never provided.",
-      "fraud_indicators": ["Patients with single provider only", "No other healthcare claims for patient", "Service dates during hospitalization", "Excessive daily service volume"]
+      "rule_id": "R-007",
+      "title": "Duplicate/Resubmission",
+      "rule_text": "Claims with the same member, provider, diagnosis code, and amount within 7 days are likely duplicates or deliberate resubmissions to collect double payment.",
+      "summary": "Duplicate claim within 7 days triggers FLAG.",
+      "fraud_indicators": [
+        "Exact match on member, provider, amount, and diagnosis",
+        "Claim resubmitted after initial denial with minor changes",
+        "Same service date with different claim IDs"
+      ],
+      "related_rules": []
     },
     {
-      "section_id": "OIG-SHOPPING-001",
-      "cpt_code": null,
-      "title": "Doctor Shopping - Controlled Substances",
-      "rule_text": "Doctor shopping involves patients seeking controlled substances from multiple providers. Indicators: (1) patient visiting 4+ providers for same condition, (2) multiple providers prescribing opioids/controlled substances, (3) excessive pain management procedures without improvement documentation, (4) travel to distant providers bypassing local options.",
-      "summary": "Multiple provider visits for controlled substances indicates possible shopping.",
-      "fraud_indicators": ["4+ providers for same diagnosis", "Multiple controlled substance prescriptions", "Geographic anomalies in care seeking", "Lack of treatment response documentation"]
+      "rule_id": "R-008",
+      "title": "Amount Outlier",
+      "rule_text": "Claim amounts exceeding 3 standard deviations above the mean for that claim type indicate potential upcoding or inflated billing.",
+      "summary": "Claim amount >3 sigma above mean for type triggers FLAG.",
+      "fraud_indicators": [
+        "Amount far exceeds typical range for procedure/service",
+        "Unbundled charges that should be grouped",
+        "Add-on charges without corresponding base procedure"
+      ],
+      "related_rules": ["R-006"]
     },
     {
-      "section_id": "CMS-UNBUNDLE-001",
-      "cpt_code": null,
-      "title": "Unbundling - Separate Billing for Bundled Services",
-      "rule_text": "Unbundling occurs when providers separately bill for services that should be billed together under a single code. CCI edits define bundled services. Same-day claims for related procedures by same provider should be reviewed for proper bundling. Example: billing E&M separately from procedure when E&M is included.",
-      "summary": "Unbundling is separately billing services that should be combined.",
-      "fraud_indicators": ["Same-day same-provider multiple procedure codes", "E&M billed with procedure lacking modifier", "Surgical global period violations"]
+      "rule_id": "R-009",
+      "title": "Early Tenure Claim",
+      "rule_text": "Claims filed within the first 60 days of coverage enrollment may indicate pre-existing utilization or enrollment motivated by planned claims.",
+      "summary": "Claim within 60 days of enrollment start triggers INFO.",
+      "fraud_indicators": [
+        "Member enrolled and filed claim almost immediately",
+        "Large claim amount in first policy month",
+        "Critical illness diagnosis within waiting period"
+      ],
+      "related_rules": ["R-003", "R-004"]
     },
     {
-      "section_id": "CMS-64493-001",
-      "cpt_code": "64493",
-      "title": "Facet Joint Injection Medical Necessity",
-      "rule_text": "CPT 64493 (facet joint injection) requires: (1) documented facet-mediated pain, (2) failure of conservative treatment, (3) diagnostic confirmation. Frequency limits apply - typically no more than 4 sessions per spinal region per year. Providers with high facet injection volumes require medical necessity review.",
-      "summary": "Facet injections require documented pain and failed conservative treatment.",
-      "fraud_indicators": ["Excessive injection frequency", "Lack of diagnostic support", "No documented conservative treatment failure"]
+      "rule_id": "R-010",
+      "title": "Shared Address",
+      "rule_text": "Multiple unrelated members filing claims from the same address may indicate a dependent ring or organized scheme using a single location as a front.",
+      "summary": "3+ unrelated members at same address triggers INFO.",
+      "fraud_indicators": [
+        "Multiple member IDs registered at identical address",
+        "Members not listed as dependents of each other",
+        "Address is commercial or PO Box rather than residential"
+      ],
+      "related_rules": ["R-015"]
     },
     {
-      "section_id": "OIG-RING-001",
-      "cpt_code": null,
-      "title": "Provider Ring Detection",
-      "rule_text": "Provider rings involve collusion between multiple providers to defraud payers. Indicators: (1) closed referral loops between small provider groups, (2) shared patient populations with unusual referral patterns, (3) coordinated billing pattern changes, (4) financial relationships between ring members, (5) high anomaly scores across multiple connected providers.",
-      "summary": "Provider rings show coordinated suspicious patterns across connected providers.",
-      "fraud_indicators": ["Closed referral loops", "Shared unusual patient population", "Synchronized billing changes", "Multiple high-anomaly connected providers"]
+      "rule_id": "R-011",
+      "title": "Surgical/Emergency Mismatch",
+      "rule_text": "Claims categorized as surgical or emergency that lack corresponding clinical evidence (operative notes, ER triage records) may indicate fabricated severity to increase payout.",
+      "summary": "Surgical/emergency claim without supporting clinical records triggers FLAG.",
+      "fraud_indicators": [
+        "No operative report for surgical claim",
+        "No ER triage documentation for emergency claim",
+        "Procedure code inconsistent with diagnosis"
+      ],
+      "related_rules": ["R-005"]
     },
     {
-      "section_id": "CMS-DUP-001",
-      "cpt_code": null,
-      "title": "Duplicate Claim Detection",
-      "rule_text": "Duplicate claims involve billing multiple times for the same service. Detection criteria: (1) same patient, same date, same procedure, same provider, (2) claims submitted to multiple payers for same service, (3) resubmission of previously paid claims. Duplicate claim rates >5% warrant investigation.",
-      "summary": "Duplicate claims bill the same service multiple times.",
-      "fraud_indicators": ["Same patient/date/CPT/provider combinations", "Multiple payer submissions", "High resubmission rates"]
+      "rule_id": "R-012",
+      "title": "Excessive Contact Attempts",
+      "rule_text": "More than 5 failed contact attempts with a claimant may indicate avoidance behavior, which is correlated with fraudulent claims.",
+      "summary": "More than 5 failed contact attempts triggers INFO.",
+      "fraud_indicators": [
+        "Member unreachable at all listed phone numbers",
+        "Returned mail at address on file",
+        "Voicemail full or disconnected"
+      ],
+      "related_rules": ["R-014"]
+    },
+    {
+      "rule_id": "R-013",
+      "title": "Disability Portal Critical Illness",
+      "rule_text": "When a critical illness claim cross-references with an active disability claim for the same member, additional scrutiny is warranted to ensure claims are not duplicative across benefit lines.",
+      "summary": "Cross-reference with disability portal for critical illness claims triggers INFO.",
+      "fraud_indicators": [
+        "Active STD/LTD claim for same diagnosis period",
+        "Disability and supplemental claims filed same week",
+        "Different diagnosis codes for overlapping conditions"
+      ],
+      "related_rules": []
+    },
+    {
+      "rule_id": "R-014",
+      "title": "Suspicious Banner Active",
+      "rule_text": "A suspicious_banner flag already exists on the member record in Prudential 360, indicating prior SIU involvement or prior fraud alerts. All new claims should receive elevated scrutiny.",
+      "summary": "Existing suspicious_banner on member record triggers FLAG.",
+      "fraud_indicators": [
+        "Prior SIU investigation on this member",
+        "Previous claim denial for fraud",
+        "Active watchlist entry"
+      ],
+      "related_rules": ["R-001", "R-002"]
+    },
+    {
+      "rule_id": "R-015",
+      "title": "Family Claim Cluster",
+      "rule_text": "When a member and 3+ dependents all file claims within 60 days, it may indicate coordinated filing — legitimate for a real family event, but a red flag when combined with other indicators.",
+      "summary": "Member + 3 dependents filing within 60 days triggers FLAG.",
+      "fraud_indicators": [
+        "All family members claiming same or similar conditions",
+        "Claims filed in batch on same day",
+        "Dependent ages inconsistent with family structure"
+      ],
+      "related_rules": ["R-001", "R-002", "R-010"]
     }
   ],
-  "patterns": [
-    {
-      "pattern_id": "UPCODING_RING",
-      "name": "Upcoding Ring Pattern",
-      "description": "Multiple providers in referral relationship with one provider showing significant upcoding patterns. Referring providers shift referral concentration to upcoding provider.",
-      "detection_criteria": ["Primary provider CPT concentration >2 SD above peers", "Referral concentration shift >50% in recent months", "Shared patient population between providers", "High anomaly scores across connected providers"],
-      "related_rules": ["CMS-27447-002", "OIG-UPCODING-001", "OIG-KICKBACK-001", "OIG-RING-001"]
+  "patterns": {
+    "DEPENDENT_ABUSE": {
+      "description": "Fabricated or inflated dependent enrollment to generate multiple claim payouts",
+      "indicators": ["Excessive dependent count", "Rapid filing for all dependents", "Shared addresses across unrelated members"],
+      "severity": "HIGH",
+      "action": "Block auto-adjudication, SIU referral, verify dependent eligibility via Prudential 360"
     },
-    {
-      "pattern_id": "PHANTOM_BILLING",
-      "name": "Phantom Billing Pattern",
-      "description": "Provider billing for services to patients with no other healthcare utilization or verifiable contact.",
-      "detection_criteria": ["Patients with single provider claims", "No corroborating healthcare activity", "High claim volume relative to documented capacity", "Unusual service date patterns"],
-      "related_rules": ["OIG-PHANTOM-001", "CMS-DUP-001"]
+    "AUTO_ADJ_GAMING": {
+      "description": "Structuring claims to stay below auto-adjudication thresholds and avoid review",
+      "indicators": ["Claims clustered just below threshold amounts", "Identical procedures across many members", "High-volume provider patterns"],
+      "severity": "HIGH",
+      "action": "Flag provider, lower auto-adj threshold for provider, CBR review"
     },
-    {
-      "pattern_id": "DOCTOR_SHOPPING",
-      "name": "Doctor Shopping Pattern",
-      "description": "Patients visiting multiple providers for controlled substances or pain management.",
-      "detection_criteria": ["Patient visiting 4+ providers for similar services", "High concentration of pain management codes", "Geographic spread inconsistent with residence", "Multiple concurrent controlled substance sources"],
-      "related_rules": ["OIG-SHOPPING-001", "CMS-64493-001"]
+    "DOCUMENT_TAMPERING": {
+      "description": "Altered or fabricated medical documents submitted to support claims",
+      "indicators": ["Missing metadata or headers on documents", "Template mismatches", "Surgical claims without operative notes"],
+      "severity": "HIGH",
+      "action": "PMR hold, request original records from facility, SIU referral"
+    },
+    "POLICY_MANIPULATION": {
+      "description": "Beneficiary or coverage changes timed to coincide with large claims",
+      "indicators": ["Recent policy changes before claim", "Coverage upgrades before target event", "Early tenure large claims"],
+      "severity": "MEDIUM",
+      "action": "Review policy change history in FIS/PAS, verify coverage dates, escalate if pattern confirmed"
+    },
+    "PROVIDER_MILL": {
+      "description": "Provider generating excessive supplemental health claims via unnecessary services",
+      "indicators": ["Volume >50 claims in 90 days", "Identical CPT codes", "Patients from wide geographic range"],
+      "severity": "HIGH",
+      "action": "Provider audit, cross-reference with state medical board, block new claims from provider"
     }
-  ]
+  }
 }

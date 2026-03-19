@@ -1,304 +1,258 @@
-"""
-Claims Investigation Copilot - Main Entry Point
-
-This script loads all data, computes features, runs anomaly detection,
-and builds the graph. It provides a DataContext object that can be used
-by the LangGraph agents.
-"""
+"""Prudential Supplemental Health Examiner Workflow Copilot - Main Entry Point"""
 
 import os
 import sys
+import hashlib
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-import pandas as pd
 import networkx as nx
+import pickle
 
-# Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from data.generate_synthetic import generate_all_data, NET_PRIMARY, NET_PROVIDERS
-from data.features import compute_all_features
-from data.anomaly import compute_all_anomaly_scores
-from data.graph import build_claims_graph, find_connections, find_rings, get_ring_edges, get_referral_history
-from billing_rules.index import get_billing_rules_index, search_billing_rules
-from data.generate_disability import generate_disability_data, DisabilityClaim
-from cases import Case
-import pickle
+from domain_config import PRUDENTIAL_SUPPLEMENTAL_HEALTH, DomainConfig
+from data.generate_supplemental import generate_supplemental_data, Claim
+from intelligence.rules_engine import run_rules_engine, RuleResult
+from intelligence.risk_scoring import score_claim, RiskBreakdown
+from intelligence.document_analysis import run_document_checks
+from intelligence.document_vision import run_vision_document_checks, find_claim_images
+from intelligence.entity_graph import build_supplemental_health_graph, detect_patterns, PatternResult
+from billing_rules.index import get_insurance_rules_index
+from cases import Case, CaseType, ClaimType, CasePriority, CaseStatus
+
+
+CACHE_VERSION = "v2_supplemental"
 
 
 @dataclass
 class DataContext:
-    """
-    Container for all data used by the investigation agents.
-    """
-    claims_df: pd.DataFrame
-    providers_df: pd.DataFrame
-    members_df: pd.DataFrame
-    facilities_df: pd.DataFrame
-    provider_features_df: pd.DataFrame
-    member_features_df: pd.DataFrame
-    peer_stats_df: pd.DataFrame
-    z_scores_df: pd.DataFrame
-    anomaly_scores_df: pd.DataFrame
-    graph: nx.DiGraph
-    disability_claims: List[DisabilityClaim] = field(default_factory=list)
+    """Container for all supplemental health data."""
+    domain_config: DomainConfig
+    supplemental_data: Dict
+    supplemental_claims: List
+    supplemental_graph: nx.DiGraph
+    detected_patterns: List[PatternResult]
     case_queue: List[Case] = field(default_factory=list)
-    
-    def get_high_anomaly_providers(self, threshold: float = 0.5) -> pd.DataFrame:
-        """Get providers with anomaly score above threshold."""
-        provider_scores = self.anomaly_scores_df[
-            (self.anomaly_scores_df['entity_type'] == 'provider') &
-            (self.anomaly_scores_df['anomaly_score'] >= threshold)
-        ].sort_values('anomaly_score', ascending=False)
-        return provider_scores
-    
-    def get_provider_profile(self, provider_id: str) -> Optional[Dict]:
-        """Get complete profile for a provider."""
-        # Get basic info
-        provider_info = self.providers_df[self.providers_df['provider_id'] == provider_id]
-        if len(provider_info) == 0:
-            return None
-        provider_info = provider_info.iloc[0].to_dict()
-        
-        # Get features
-        features = self.provider_features_df[
-            self.provider_features_df['provider_id'] == provider_id
-        ]
-        if len(features) > 0:
-            provider_info.update(features.iloc[0].to_dict())
-        
-        # Get anomaly score
-        anomaly = self.anomaly_scores_df[
-            self.anomaly_scores_df['entity_id'] == provider_id
-        ]
-        if len(anomaly) > 0:
-            provider_info['anomaly_score'] = anomaly.iloc[0]['anomaly_score']
-            provider_info['top_features'] = anomaly.iloc[0]['top_features']
-        
-        return provider_info
-    
-    def get_provider_claims(self, provider_id: str, limit: int = 20) -> pd.DataFrame:
-        """Get claims for a specific provider."""
-        claims = self.claims_df[self.claims_df['provider_id'] == provider_id]
-        return claims.head(limit)
-    
-    def find_provider_connections(self, provider_id: str, depth: int = 2) -> Dict:
-        """Find entities connected to a provider."""
-        return find_connections(self.graph, provider_id, depth)
-    
-    def find_fraud_rings(self, min_anomaly: float = 0.5, min_entities: int = 3):
-        """Find potential fraud rings."""
-        return find_rings(self.graph, self.anomaly_scores_df, min_anomaly, min_entities)
-    
-    def get_referral_history(self, provider_id: str, months: int = 18):
-        """Get referral history for a provider."""
-        return get_referral_history(self.claims_df, provider_id, months)
+    # Lookup dicts for fast access
+    claim_rules: Dict[str, List[RuleResult]] = field(default_factory=dict)
+    claim_risk_scores: Dict[str, RiskBreakdown] = field(default_factory=dict)
+    claim_doc_results: Dict[str, list] = field(default_factory=dict)
+
+    def get_claim(self, claim_id: str) -> Optional[Claim]:
+        return next((c for c in self.supplemental_claims if c.claim_id == claim_id), None)
+
+    def get_case(self, case_id: str) -> Optional[Case]:
+        return next((c for c in self.case_queue if c.case_id == case_id), None)
+
+    def get_member(self, member_id: str):
+        return next((m for m in self.supplemental_data.get("members", [])
+                     if m.member_id == member_id), None)
+
+    def get_member_claims(self, member_id: str) -> List:
+        return [c for c in self.supplemental_claims if c.member_id == member_id]
+
+    def get_member_dependents(self, member_id: str) -> List:
+        return [d for d in self.supplemental_data.get("dependents", [])
+                if d.member_id == member_id]
+
+    def get_provider(self, provider_id: str):
+        return next((p for p in self.supplemental_data.get("providers", [])
+                     if p.provider_id == provider_id), None)
+
+    def get_policy(self, policy_id: str):
+        return next((p for p in self.supplemental_data.get("policies", [])
+                     if p.policy_id == policy_id), None)
+
+    def get_employer(self, employer_id: str):
+        return next((e for e in self.supplemental_data.get("employers", [])
+                     if e.employer_id == employer_id), None)
+
+    def get_claim_tasks(self, claim_id: str) -> List:
+        return [t for t in self.supplemental_data.get("workflow_tasks", [])
+                if t.claim_id == claim_id]
+
+    def get_document(self, claim_id: str):
+        return next((d for d in self.supplemental_data.get("documents", [])
+                     if d.claim_id == claim_id), None)
+
+    def get_high_risk_claims(self, min_score: float = 65) -> List[Case]:
+        return [c for c in self.case_queue if c.risk_score >= min_score]
+
+    def get_stats(self) -> Dict:
+        high = sum(1 for c in self.case_queue if c.priority == CasePriority.HIGH)
+        medium = sum(1 for c in self.case_queue if c.priority == CasePriority.MEDIUM)
+        low = sum(1 for c in self.case_queue if c.priority == CasePriority.LOW)
+        total_held = sum(c.claim_amount for c in self.case_queue if c.priority == CasePriority.HIGH)
+
+        # Top rules
+        rule_counts = {}
+        for rules in self.claim_rules.values():
+            for r in rules:
+                if r.triggered:
+                    rule_counts[r.rule_id] = rule_counts.get(r.rule_id, 0) + 1
+
+        # Workflow health
+        tasks = self.supplemental_data.get("workflow_tasks", [])
+        open_pmr = sum(1 for t in tasks if t.task_type == "PMR" and t.status in ("pending", "in_progress"))
+        pending_cbr = sum(1 for t in tasks if t.task_type == "CBR" and t.status in ("pending", "in_progress"))
+        past_tat = sum(1 for t in tasks if t.status == "overdue")
+
+        return {
+            "total_claims": len(self.case_queue),
+            "risk_distribution": {"HIGH": high, "MEDIUM": medium, "LOW": low},
+            "intercepts": {"count": high, "held_amount": round(total_held, 2)},
+            "top_rules_triggered": sorted(rule_counts.items(), key=lambda x: x[1], reverse=True)[:10],
+            "patterns_detected": len(self.detected_patterns),
+            "pattern_types": [p.pattern_type for p in self.detected_patterns],
+            "workflow_health": {"open_pmr": open_pmr, "pending_cbr": pending_cbr, "past_tat": past_tat},
+        }
 
 
 def initialize_data(force_regenerate: bool = False) -> DataContext:
-    """
-    Initialize all data for the investigation copilot.
-    
-    This function:
-    1. Checks for cached data (unless force_regenerate=True)
-    2. Generates synthetic claims data if needed
-    3. Computes provider and member features
-    4. Runs anomaly detection
-    5. Builds the network graph
-    6. Initializes the billing rules index
-    
-    Args:
-        force_regenerate: If True, regenerate data even if cache exists
-    
-    Returns:
-        DataContext with all loaded data
-    """
-    
-    cache_file = 'data_cache.pkl'
-    
-    # Try to load from cache first
+    cache_file = f'data_cache_{CACHE_VERSION}.pkl'
+
     if not force_regenerate and os.path.exists(cache_file):
         print("=" * 60)
-        print("CLAIMS INVESTIGATION COPILOT - Loading Cached Data")
+        print("PRUDENTIAL SUPPLEMENTAL HEALTH COPILOT - Loading Cache")
         print("=" * 60)
-        print(f"\nLoading from cache: {cache_file}...")
-        
         try:
             with open(cache_file, 'rb') as f:
                 ctx = pickle.load(f)
-            
-            print("✅ Cached data loaded successfully!")
-            print("\n" + "=" * 60)
-            print("DATA INITIALIZATION COMPLETE (from cache)")
-            print("=" * 60)
-            print("\n💡 To regenerate data, run with force_regenerate=True")
-            
+            print(f"✅ Cache loaded ({len(ctx.case_queue)} claims)")
             return ctx
         except Exception as e:
-            print(f"⚠️  Failed to load cache: {e}")
-            print("Regenerating data...\n")
-    
+            print(f"⚠️ Cache load failed: {e}\nRegenerating...")
+
     print("=" * 60)
-    print("CLAIMS INVESTIGATION COPILOT - Data Initialization")
+    print("PRUDENTIAL SUPPLEMENTAL HEALTH COPILOT - Initializing")
     print("=" * 60)
-    
-    # Step 1: Generate synthetic data
-    print("\n[1/5] Generating synthetic data...")
-    claims_df, providers_df, members_df, facilities_df = generate_all_data()
-    
-    # Step 2: Compute features
-    print("\n[2/5] Computing features...")
-    provider_features_df, member_features_df, peer_stats_df, z_scores_df = compute_all_features(
-        claims_df, providers_df, members_df
-    )
-    
-    # Step 3: Run anomaly detection
-    print("\n[3/5] Running anomaly detection...")
-    anomaly_scores_df = compute_all_anomaly_scores(
-        provider_features_df,
-        member_features_df,
-        peer_stats_df
-    )
-    
-    # Step 4: Build graph
-    print("\n[4/5] Building network graph...")
-    graph = build_claims_graph(claims_df, anomaly_scores_df)
-    
-    # Step 5: Initialize billing rules
-    print("\n[5/7] Initializing billing rules index...")
-    _ = get_billing_rules_index()
-    
-    # Step 6: Generate disability data
-    print("\n[6/7] Generating disability claims...")
-    disability_claims = generate_disability_data()
-    
-    # Step 7: Build case queue
-    print("\n[7/7] Building case queue...")
+
+    config = PRUDENTIAL_SUPPLEMENTAL_HEALTH
+
+    print("\n[1/7] Generating supplemental health data...")
+    data = generate_supplemental_data()
+    claims = data["claims"]
+
+    # Build context dict for rules/scoring
+    context_dict = {
+        "claims": claims,
+        "members": data["members"],
+        "dependents": data["dependents"],
+        "providers": data["providers"],
+        "facilities": data["facilities"],
+        "addresses": data["addresses"],
+        "policies": data["policies"],
+        "workflow_tasks": data["workflow_tasks"],
+    }
+
+    print(f"\n[2/7] Running rules engine on {len(claims)} claims...")
+    claim_rules = {}
+    for claim in claims:
+        results = run_rules_engine(claim, context_dict)
+        claim_rules[claim.claim_id] = results
+    triggered_count = sum(1 for rules in claim_rules.values() for r in rules if r.triggered)
+    print(f"  → {triggered_count} total rule triggers across all claims")
+
+    print(f"\n[3/7] Scoring claims...")
+    claim_risk_scores = {}
+    for claim in claims:
+        score = score_claim(claim, context_dict, claim_rules.get(claim.claim_id, []))
+        claim_risk_scores[claim.claim_id] = score
+    high = sum(1 for s in claim_risk_scores.values() if s.tier == "HIGH")
+    med = sum(1 for s in claim_risk_scores.values() if s.tier == "MEDIUM")
+    low = sum(1 for s in claim_risk_scores.values() if s.tier == "LOW")
+    print(f"  → HIGH: {high}, MEDIUM: {med}, LOW: {low}")
+
+    print(f"\n[4/7] Running document analysis...")
+    claim_doc_results = {}
+    vision_count = 0
+    for doc in data["documents"]:
+        # Try vision analysis first for claims that have images
+        vision_results = None
+        if find_claim_images(doc.claim_id):
+            try:
+                vision_results = run_vision_document_checks(doc.claim_id)
+            except Exception as e:
+                print(f"  ⚠ Vision failed for {doc.claim_id}: {e}")
+        if vision_results:
+            claim_doc_results[doc.claim_id] = vision_results
+            vision_count += 1
+        else:
+            claim_doc_results[doc.claim_id] = run_document_checks(doc)
+    doc_failures = sum(1 for results in claim_doc_results.values()
+                       for r in results if not r.passed and r.severity == "CRITICAL")
+    print(f"  → {vision_count} claims analyzed via Haiku 4.5 vision, rest via metadata")
+    print(f"  → {doc_failures} critical document failures")
+
+    print(f"\n[5/7] Building entity graph...")
+    graph = build_supplemental_health_graph(data)
+    print(f"  → {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges")
+
+    print(f"\n[6/7] Detecting patterns...")
+    patterns = detect_patterns(graph, data)
+    print(f"  → {len(patterns)} patterns detected")
+
+    print(f"\n[7/7] Building case queue...")
     from case_queue import build_case_queue
-    case_queue = build_case_queue(anomaly_scores_df, provider_features_df, disability_claims)
+    case_queue = build_case_queue(claims, claim_risk_scores, claim_rules, data)
     print(f"  → {len(case_queue)} cases in queue")
-    
-    # Create context
+
+    # Initialize insurance rules index
+    _ = get_insurance_rules_index()
+
     ctx = DataContext(
-        claims_df=claims_df,
-        providers_df=providers_df,
-        members_df=members_df,
-        facilities_df=facilities_df,
-        provider_features_df=provider_features_df,
-        member_features_df=member_features_df,
-        peer_stats_df=peer_stats_df,
-        z_scores_df=z_scores_df,
-        anomaly_scores_df=anomaly_scores_df,
-        graph=graph,
-        disability_claims=disability_claims,
+        domain_config=config,
+        supplemental_data=data,
+        supplemental_claims=claims,
+        supplemental_graph=graph,
+        detected_patterns=patterns,
         case_queue=case_queue,
+        claim_rules=claim_rules,
+        claim_risk_scores=claim_risk_scores,
+        claim_doc_results=claim_doc_results,
     )
-    
-    # Save to cache
-    print("\n💾 Saving to cache...")
+
+    print("\n💾 Saving cache...")
     try:
         with open(cache_file, 'wb') as f:
             pickle.dump(ctx, f)
-        print(f"✅ Data cached to {cache_file}")
+        print(f"✅ Cached to {cache_file}")
     except Exception as e:
-        print(f"⚠️  Failed to save cache: {e}")
-    
+        print(f"⚠️ Cache save failed: {e}")
+
     print("\n" + "=" * 60)
-    print("DATA INITIALIZATION COMPLETE")
+    print("INITIALIZATION COMPLETE")
+    print(f"  {len(case_queue)} claims | {high} HIGH | {med} MEDIUM | {low} LOW")
+    print(f"  {len(patterns)} patterns | {graph.number_of_nodes()} graph nodes")
     print("=" * 60)
-    
     return ctx
 
 
 def run_demo():
-    """
-    Run a demonstration of the data layer.
-    Shows how suspicious patterns can be discovered.
-    """
-    
     ctx = initialize_data()
-    
+    stats = ctx.get_stats()
+
     print("\n" + "=" * 60)
-    print("DEMO: Discovering Suspicious Patterns")
+    print("DEMO: Supplemental Health Claims Overview")
     print("=" * 60)
-    
-    # Step 1: Find high anomaly providers
-    print("\n[Step 1] Scanning for high-anomaly providers...")
-    high_anomaly = ctx.get_high_anomaly_providers(threshold=0.5)
-    print(f"Found {len(high_anomaly)} providers with anomaly score > 0.5:")
-    for _, row in high_anomaly.head(10).iterrows():
-        print(f"  \u2022 {row['entity_id']}: score={row['anomaly_score']:.2f}, billed=${row['total_billed']:,.0f}")
-    
-    # Step 2: Profile top entity
-    top_entity = high_anomaly.iloc[0]['entity_id'] if len(high_anomaly) > 0 else NET_PRIMARY
-    print(f"\n[Step 2] Profiling {top_entity}...")
-    profile = ctx.get_provider_profile(top_entity)
-    if profile:
-        print(f"  Specialty: {profile.get('specialty')}")
-        print(f"  Anomaly Score: {profile.get('anomaly_score', 0):.2f}")
-        print(f"  Total Billed: ${profile.get('total_billed', 0):,.0f}")
-        print(f"  CPT Concentration: {profile.get('top_cpt_concentration', 0):.1%}")
-        print(f"  Referral Concentration: {profile.get('referral_concentration', 0):.1%}")
-        
-        if profile.get('top_features'):
-            print("  Top anomaly features:")
-            for feat in profile['top_features'][:3]:
-                print(f"    - {feat['feature_name']}: {feat['value']} (z={feat['z_score']})")
-    
-    # Step 3: Find connections
-    print(f"\n[Step 3] Finding connections to {top_entity}...")
-    connections = ctx.find_provider_connections(top_entity, depth=2)
-    print(f"  Total connected entities: {connections['total_entities']}")
-    print(f"  Connection density: {connections['connection_density']}")
-    
-    connected_providers = [
-        e for e in connections['connected_entities']
-        if e['entity_type'] == 'provider' and e['anomaly_score'] > 0.3
-    ]
-    if connected_providers:
-        print(f"  Connected providers with elevated anomaly:")
-        for p in connected_providers[:5]:
-            print(f"    \u2022 {p['entity_id']}: anomaly={p['anomaly_score']:.2f}")
-    
-    # Step 4: Find rings
-    print("\n[Step 4] Finding fraud rings...")
-    rings = ctx.find_fraud_rings(min_anomaly=0.5, min_entities=3)
-    print(f"  Found {len(rings)} potential rings")
-    
-    if rings:
-        ring = rings[0]
-        print(f"\n  Top ring:")
-        print(f"    Entities: {ring['entity_count']}")
-        print(f"    Avg anomaly: {ring['avg_anomaly_score']}")
-        print(f"    Total billed: ${ring['total_billed']:,.0f}")
-        
-        providers_in_ring = [e for e in ring['entities'] if e['entity_type'] == 'provider']
-        print(f"    Providers: {[p['entity_id'] for p in providers_in_ring]}")
-    
-    # Step 5: Check referral history
-    print(f"\n[Step 5] Analyzing referral history for {top_entity}...")
-    history = ctx.get_referral_history(top_entity, months=12)
-    if history:
-        print("  Monthly referral concentration:")
-        for record in history[-6:]:
-            print(f"    {record['month']}: {record['total_referrals']} referrals, "
-                  f"top source concentration: {record['concentration']:.0%}")
-    
-    # Step 6: Search billing rules
-    print("\n[Step 6] Searching relevant billing rules...")
-    rules = search_billing_rules(
-        cpt_codes=['93458', '93306'],
-        context="cardiology cardiac catheterization echocardiogram referral kickback unbundling"
-    )
-    print(f"  Found {len(rules)} relevant rules:")
-    for rule in rules[:3]:
-        print(f"    \u2022 {rule['section_id']}: {rule['title']}")
-    
+
+    print(f"\nTotal claims: {stats['total_claims']}")
+    print(f"Risk distribution: {stats['risk_distribution']}")
+    print(f"Intercepts: {stats['intercepts']['count']} claims, ${stats['intercepts']['held_amount']:,.2f} held")
+    print(f"Patterns detected: {stats['patterns_detected']}")
+    print(f"Workflow: {stats['workflow_health']}")
+
+    print("\nTop triggered rules:")
+    for rule_id, count in stats['top_rules_triggered'][:5]:
+        print(f"  • {rule_id}: {count} triggers")
+
+    print("\nHigh-risk claims:")
+    for case in ctx.get_high_risk_claims()[:5]:
+        print(f"  • {case.case_id} ({case.claim_type.value}): score={case.risk_score:.1f}, {case.flag_reason[:60]}")
+
     print("\n" + "=" * 60)
     print("DEMO COMPLETE")
     print("=" * 60)
-    print("\nReady to be investigated by the LangGraph agents.")
-    
     return ctx
 
 

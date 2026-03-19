@@ -7,6 +7,7 @@ A seasoned fraud analyst doesn't think in "phases." They think in questions, eac
     → "Is there an innocent explanation?"
       → "What would I need to see to confirm or rule out fraud?"
         → "Is this worth escalating?"
+        
 Your system should follow that same chain.
 
 Layer 0: The Hotlist (No Agent Needed)

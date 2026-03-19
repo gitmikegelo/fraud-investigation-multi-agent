@@ -1,425 +1,226 @@
 """
-NetworkX graph module for Claims Investigation Copilot.
-Builds a graph of relationships between providers, members, and facilities.
+Network graph for Prudential life insurance entity relationships.
+Nodes: Agents, Policyholders, Trusts/Beneficiaries
+Edges: SOLD_BY, BENEFICIARY_OF, FINANCED_BY, CONNECTED_TO
 """
 
-import pandas as pd
 import networkx as nx
-from typing import Dict, List, Set, Tuple, Any
+import pandas as pd
 from collections import defaultdict
 
 
-def build_claims_graph(
-    claims_df: pd.DataFrame,
-    anomaly_scores_df: pd.DataFrame = None
-) -> nx.DiGraph:
-    """
-    Build a directed graph from claims data.
-    
-    Nodes:
-    - Providers (prefix: P-)
-    - Members (prefix: M-)
-    - Facilities (prefix: F-)
-    
-    Edges:
-    - Provider -> Member (BILLED_FOR): weight = claim_count, total_amount
-    - Provider -> Provider (REFERRED_TO): weight = referral_count
-    - Provider -> Facility (OPERATES_AT): weight = claim_count
-    
-    Node attributes:
-    - entity_type: provider/member/facility
-    - anomaly_score: from anomaly detection (if provided)
-    """
-    
+def build_insurance_graph(policies_df, anomaly_scores_df):
+    """Build directed graph from policies and relationships."""
     G = nx.DiGraph()
-    
-    # Collect edge data
-    provider_member_edges = defaultdict(lambda: {'claim_count': 0, 'total_amount': 0})
-    provider_provider_edges = defaultdict(lambda: {'referral_count': 0})
-    provider_facility_edges = defaultdict(lambda: {'claim_count': 0})
-    
-    # Track all entities
-    providers = set()
-    members = set()
-    facilities = set()
-    
-    for _, claim in claims_df.iterrows():
-        provider_id = claim['provider_id']
-        member_id = claim['member_id']
-        facility_id = claim['facility_id']
-        referring_provider = claim.get('referring_provider_id')
-        billed_amount = claim['billed_amount']
-        
-        providers.add(provider_id)
-        members.add(member_id)
-        facilities.add(facility_id)
-        
-        # Provider -> Member
-        key = (provider_id, member_id)
-        provider_member_edges[key]['claim_count'] += 1
-        provider_member_edges[key]['total_amount'] += billed_amount
-        
-        # Provider -> Provider (referrals)
-        if pd.notna(referring_provider):
-            providers.add(referring_provider)
-            ref_key = (referring_provider, provider_id)
-            provider_provider_edges[ref_key]['referral_count'] += 1
-        
-        # Provider -> Facility
-        fac_key = (provider_id, facility_id)
-        provider_facility_edges[fac_key]['claim_count'] += 1
-    
-    # Add nodes
-    for p in providers:
-        G.add_node(p, entity_type='provider')
-    
-    for m in members:
-        G.add_node(m, entity_type='member')
-    
-    for f in facilities:
-        G.add_node(f, entity_type='facility')
-    
-    # Add anomaly scores to nodes
-    if anomaly_scores_df is not None:
+
+    # Build anomaly lookup
+    anomaly_lookup = {}
+    face_lookup = {}
+    if len(anomaly_scores_df) > 0:
         for _, row in anomaly_scores_df.iterrows():
-            entity_id = row['entity_id']
-            if entity_id in G.nodes:
-                G.nodes[entity_id]['anomaly_score'] = row['anomaly_score']
-                G.nodes[entity_id]['total_billed'] = row.get('total_billed', 0)
-    
-    # Add edges
-    for (src, dst), attrs in provider_member_edges.items():
-        G.add_edge(src, dst, 
-                   relationship='BILLED_FOR',
-                   weight=attrs['claim_count'],
-                   total_amount=round(attrs['total_amount'], 2))
-    
-    for (src, dst), attrs in provider_provider_edges.items():
-        G.add_edge(src, dst,
-                   relationship='REFERRED_TO',
-                   weight=attrs['referral_count'])
-    
-    for (src, dst), attrs in provider_facility_edges.items():
-        G.add_edge(src, dst,
-                   relationship='OPERATES_AT',
-                   weight=attrs['claim_count'])
-    
-    print(f"Graph built: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
-    print(f"  Providers: {len(providers)}")
-    print(f"  Members: {len(members)}")
-    print(f"  Facilities: {len(facilities)}")
-    
+            anomaly_lookup[row["entity_id"]] = float(row["anomaly_score"])
+            face_lookup[row["entity_id"]] = float(row.get("total_face_amount", 0))
+
+    # Add agent nodes
+    agent_ids = policies_df["agent_id"].unique()
+    for aid in agent_ids:
+        G.add_node(aid, entity_type="agent",
+                    anomaly_score=anomaly_lookup.get(aid, 0),
+                    total_face_amount=face_lookup.get(aid, 0))
+
+    # Add policyholder nodes
+    ph_ids = policies_df["policyholder_id"].unique()
+    for phid in ph_ids:
+        G.add_node(phid, entity_type="policyholder",
+                    anomaly_score=anomaly_lookup.get(phid, 0),
+                    total_face_amount=0)
+
+    # Add beneficiary nodes and trust nodes
+    beneficiaries = policies_df["beneficiary"].unique()
+    for ben in beneficiaries:
+        ben_id = f"BEN-{hash(ben) % 100000:05d}"
+        G.add_node(ben_id, entity_type="beneficiary", label=ben, anomaly_score=0, total_face_amount=0)
+
+    # Add edges: agent → policyholder (SOLD_BY)
+    agent_ph = policies_df.groupby(["agent_id", "policyholder_id"]).agg(
+        total_face=("face_amount", "sum"),
+        n_policies=("policy_id", "count"),
+    ).reset_index()
+    for _, row in agent_ph.iterrows():
+        G.add_edge(row["agent_id"], row["policyholder_id"],
+                    relationship="SOLD_BY",
+                    weight=row["n_policies"],
+                    total_amount=float(row["total_face"]))
+
+    # Add edges: policyholder → beneficiary (BENEFICIARY_OF)
+    for _, pol in policies_df.iterrows():
+        ben_id = f"BEN-{hash(pol['beneficiary']) % 100000:05d}"
+        if G.has_node(ben_id):
+            if G.has_edge(pol["policyholder_id"], ben_id):
+                G[pol["policyholder_id"]][ben_id]["weight"] += 1
+                G[pol["policyholder_id"]][ben_id]["total_amount"] += float(pol["face_amount"])
+            else:
+                G.add_edge(pol["policyholder_id"], ben_id,
+                           relationship="BENEFICIARY_OF",
+                           weight=1,
+                           total_amount=float(pol["face_amount"]))
+
+    # Trust-owned policies get extra edge: agent → trust/beneficiary
+    trust_pols = policies_df[policies_df["trust_owned"] == True]
+    for _, pol in trust_pols.iterrows():
+        ben_id = f"BEN-{hash(pol['beneficiary']) % 100000:05d}"
+        if not G.has_edge(pol["agent_id"], ben_id):
+            G.add_edge(pol["agent_id"], ben_id,
+                       relationship="TRUST_CONNECTED",
+                       weight=1,
+                       total_amount=float(pol["face_amount"]))
+
     return G
 
 
-def find_connections(
-    G: nx.DiGraph,
-    entity_id: str,
-    depth: int = 2
-) -> Dict:
-    """
-    Find all entities connected to a given entity within N hops.
-    Uses BFS traversal.
-    
-    Returns:
-    - connected_entities: List of connected entities with their type and distance
-    - connection_density: Edges / nodes ratio in subgraph
-    - total_entities: Count of connected entities
-    """
-    
-    if entity_id not in G.nodes:
-        return {
-            'connected_entities': [],
-            'connection_density': 0,
-            'total_entities': 0,
-            'error': f'Entity {entity_id} not found in graph'
-        }
-    
-    # BFS to find all connected nodes within depth
+def find_connections(G, entity_id, depth=2):
+    """BFS traversal from entity within N hops."""
+    if entity_id not in G:
+        return {"error": f"Entity {entity_id} not found in graph"}
+
     visited = {entity_id: 0}
     queue = [(entity_id, 0)]
-    
+    connected = []
+
     while queue:
         current, dist = queue.pop(0)
-        
-        if dist < depth:
-            # Get all neighbors (both in and out edges for DiGraph)
-            neighbors = set(G.successors(current)) | set(G.predecessors(current))
-            
-            for neighbor in neighbors:
-                if neighbor not in visited:
-                    visited[neighbor] = dist + 1
-                    queue.append((neighbor, dist + 1))
-    
-    # Build result
-    connected_entities = []
-    for node, distance in visited.items():
-        if node != entity_id:
-            node_data = G.nodes[node]
-            connected_entities.append({
-                'entity_id': node,
-                'entity_type': node_data.get('entity_type', 'unknown'),
-                'anomaly_score': node_data.get('anomaly_score', 0),
-                'distance': distance
-            })
-    
-    # Calculate subgraph density
+        if dist >= depth:
+            continue
+        # Check both successors and predecessors (undirected traversal)
+        neighbors = set(G.successors(current)) | set(G.predecessors(current))
+        for neighbor in neighbors:
+            if neighbor not in visited:
+                visited[neighbor] = dist + 1
+                queue.append((neighbor, dist + 1))
+                nd = G.nodes.get(neighbor, {})
+                connected.append({
+                    "entity_id": neighbor,
+                    "entity_type": nd.get("entity_type", "unknown"),
+                    "distance": dist + 1,
+                    "anomaly_score": nd.get("anomaly_score", 0),
+                })
+
+    # Compute subgraph density
     subgraph_nodes = list(visited.keys())
     subgraph = G.subgraph(subgraph_nodes)
+    n_nodes = len(subgraph_nodes)
     n_edges = subgraph.number_of_edges()
-    n_nodes = subgraph.number_of_nodes()
-    
-    connection_density = n_edges / n_nodes if n_nodes > 0 else 0
-    
+    density = n_edges / n_nodes if n_nodes > 0 else 0
+
     return {
-        'connected_entities': sorted(connected_entities, key=lambda x: (-x['anomaly_score'], x['distance'])),
-        'connection_density': round(connection_density, 2),
-        'total_entities': len(connected_entities),
-        'subgraph_edges': n_edges,
-        'subgraph_nodes': n_nodes
+        "center": entity_id,
+        "connected_entities": connected,
+        "total_entities": len(connected),
+        "connection_density": round(density, 2),
     }
 
 
-def find_rings(
-    G: nx.DiGraph,
-    anomaly_scores_df: pd.DataFrame,
-    min_anomaly_score: float = 0.5,
-    min_entities: int = 3
-) -> List[Dict]:
+def find_rings(G, anomaly_scores_df, min_anomaly=0.5, min_entities=3):
+    """Find clusters of connected high-anomaly entities.
+    
+    Agents connect through intermediate nodes (policyholders, beneficiaries),
+    so we expand 1 hop from high-anomaly nodes to include bridging entities.
     """
-    Find potential fraud rings - clusters of connected high-anomaly entities.
-    
-    Uses connected components on the undirected version of the graph,
-    filtered by anomaly score.
-    
-    Returns list of ring candidates with:
-    - entities: List of entities in the ring
-    - avg_anomaly_score
-    - total_billed
-    - connection_density
-    """
-    
-    # Get high-anomaly entities
-    high_anomaly = set(
-        anomaly_scores_df[anomaly_scores_df['anomaly_score'] >= min_anomaly_score]['entity_id']
+    high_anomaly_ids = set(
+        anomaly_scores_df[anomaly_scores_df["anomaly_score"] >= min_anomaly]["entity_id"]
     )
-    
-    # Create subgraph with only high-anomaly nodes
-    high_anomaly_in_graph = high_anomaly & set(G.nodes)
-    subgraph = G.subgraph(high_anomaly_in_graph)
-    
-    # Find connected components (need undirected for this)
-    undirected = subgraph.to_undirected()
-    components = list(nx.connected_components(undirected))
-    
+
+    # Get high-anomaly nodes that exist in the graph
+    ha_in_graph = [n for n in G.nodes if n in high_anomaly_ids]
+    if not ha_in_graph:
+        return []
+
+    # Expand 1 hop to include intermediate nodes (policyholders, beneficiaries)
+    # that bridge high-anomaly agents together
+    expanded_nodes = set(ha_in_graph)
+    for n in ha_in_graph:
+        expanded_nodes.update(G.successors(n))
+        expanded_nodes.update(G.predecessors(n))
+
+    subgraph = G.subgraph(expanded_nodes).to_undirected()
+    components = list(nx.connected_components(subgraph))
+
     rings = []
-    
-    for component in components:
-        if len(component) < min_entities:
+    for comp in components:
+        # Require at least min_entities high-anomaly nodes in the component
+        ha_in_comp = [n for n in comp if n in high_anomaly_ids]
+        if len(ha_in_comp) < min_entities:
             continue
-        
-        # Get entity details
         entities = []
-        total_billed = 0
-        total_anomaly = 0
-        
-        for entity_id in component:
-            node_data = G.nodes[entity_id]
-            anomaly_score = node_data.get('anomaly_score', 0)
-            billed = node_data.get('total_billed', 0)
-            
+        total_face = 0
+        for nid in comp:
+            nd = G.nodes.get(nid, {})
             entities.append({
-                'entity_id': entity_id,
-                'entity_type': node_data.get('entity_type', 'unknown'),
-                'anomaly_score': anomaly_score
+                "entity_id": nid,
+                "entity_type": nd.get("entity_type", "unknown"),
+                "anomaly_score": nd.get("anomaly_score", 0),
             })
-            
-            total_billed += billed
-            total_anomaly += anomaly_score
-        
-        # Calculate density
-        ring_subgraph = G.subgraph(component)
-        n_edges = ring_subgraph.number_of_edges()
-        n_nodes = ring_subgraph.number_of_nodes()
-        density = n_edges / n_nodes if n_nodes > 0 else 0
-        
+            total_face += nd.get("total_face_amount", 0)
+
+        sub = G.subgraph(comp)
+        n_edges = sub.number_of_edges()
+        density = n_edges / len(comp) if comp else 0
+
         rings.append({
-            'entities': sorted(entities, key=lambda x: -x['anomaly_score']),
-            'entity_count': len(entities),
-            'avg_anomaly_score': round(total_anomaly / len(entities), 2),
-            'total_billed': round(total_billed, 2),
-            'connection_density': round(density, 2),
-            'edge_count': n_edges
+            "entities": entities,
+            "entity_count": len(comp),
+            "avg_anomaly_score": round(sum(e["anomaly_score"] for e in entities) / len(entities), 2),
+            "total_face_amount": round(total_face, 2),
+            "connection_density": round(density, 2),
         })
-    
-    # Sort by total billed (highest first)
-    rings.sort(key=lambda x: -x['total_billed'])
-    
+
+    rings.sort(key=lambda r: -r["avg_anomaly_score"])
     return rings
 
 
-def get_ring_edges(
-    G: nx.DiGraph,
-    entity_ids: List[str]
-) -> List[Dict]:
-    """
-    Get all edges between entities in a ring.
-    Used for visualization.
-    """
-    
-    entity_set = set(entity_ids)
+def get_ring_edges(G, entity_ids):
+    """Get all edges between ring members."""
+    id_set = set(entity_ids)
     edges = []
-    
     for src, dst, data in G.edges(data=True):
-        if src in entity_set and dst in entity_set:
+        if src in id_set and dst in id_set:
             edges.append({
-                'src': src,
-                'dst': dst,
-                'relationship': data.get('relationship', 'CONNECTED'),
-                'weight': data.get('weight', 1),
-                'total_amount': data.get('total_amount', 0)
+                "src": src,
+                "dst": dst,
+                "relationship": data.get("relationship", "CONNECTED"),
+                "weight": data.get("weight", 1),
+                "total_amount": data.get("total_amount", 0),
             })
-    
     return edges
 
 
-def get_referral_history(
-    claims_df: pd.DataFrame,
-    provider_id: str,
-    months: int = 18
-) -> List[Dict]:
-    """
-    Get monthly referral breakdown for a provider.
-    Shows how referral patterns changed over time.
-    
-    Returns list of monthly records with:
-    - month
-    - referral_sources: dict of referring_provider -> count
-    - total_referrals
-    - top_source
-    - concentration (% from top source)
-    """
-    
-    # Filter claims where this provider received referrals
-    provider_claims = claims_df[
-        (claims_df['provider_id'] == provider_id) &
-        (claims_df['referring_provider_id'].notna())
+def get_agent_network_history(policies_df, agent_id, months=18):
+    """Monthly breakdown of agent activity showing policy issuance patterns."""
+    from datetime import datetime, timedelta
+    now = datetime(2026, 3, 1)
+    cutoff = now - timedelta(days=months * 30)
+
+    agent_pols = policies_df[
+        (policies_df["agent_id"] == agent_id) &
+        (policies_df["issue_date"] >= cutoff)
     ].copy()
-    
-    if len(provider_claims) == 0:
+
+    if len(agent_pols) == 0:
         return []
-    
-    # Add month column
-    provider_claims['month'] = provider_claims['service_date'].dt.to_period('M')
-    
-    # Get all months in range
-    all_months = provider_claims['month'].unique()
-    all_months = sorted(all_months)[-months:]  # Last N months
-    
-    history = []
-    
-    for month in all_months:
-        month_claims = provider_claims[provider_claims['month'] == month]
-        
-        # Count referrals by source
-        referral_counts = month_claims['referring_provider_id'].value_counts().to_dict()
-        total_referrals = len(month_claims)
-        
-        if total_referrals > 0:
-            top_source = max(referral_counts, key=referral_counts.get)
-            top_count = referral_counts[top_source]
-            concentration = top_count / total_referrals
-        else:
-            top_source = None
-            concentration = 0
-        
-        history.append({
-            'month': str(month),
-            'referral_sources': referral_counts,
-            'total_referrals': total_referrals,
-            'top_source': top_source,
-            'concentration': round(concentration, 2),
-            'unique_sources': len(referral_counts)
-        })
-    
-    return history
 
+    agent_pols["month"] = agent_pols["issue_date"].dt.to_period("M")
+    monthly = agent_pols.groupby("month").agg(
+        policies_issued=("policy_id", "count"),
+        total_face=("face_amount", "sum"),
+        trust_count=("trust_owned", "sum"),
+    ).reset_index()
 
-def get_graph_summary(G: nx.DiGraph) -> Dict:
-    """Get summary statistics about the graph."""
-    
-    providers = [n for n, d in G.nodes(data=True) if d.get('entity_type') == 'provider']
-    members = [n for n, d in G.nodes(data=True) if d.get('entity_type') == 'member']
-    facilities = [n for n, d in G.nodes(data=True) if d.get('entity_type') == 'facility']
-    
-    billed_edges = [(u, v, d) for u, v, d in G.edges(data=True) if d.get('relationship') == 'BILLED_FOR']
-    referral_edges = [(u, v, d) for u, v, d in G.edges(data=True) if d.get('relationship') == 'REFERRED_TO']
-    operates_edges = [(u, v, d) for u, v, d in G.edges(data=True) if d.get('relationship') == 'OPERATES_AT']
-    
-    return {
-        'total_nodes': G.number_of_nodes(),
-        'total_edges': G.number_of_edges(),
-        'providers': len(providers),
-        'members': len(members),
-        'facilities': len(facilities),
-        'billed_for_edges': len(billed_edges),
-        'referred_to_edges': len(referral_edges),
-        'operates_at_edges': len(operates_edges),
-    }
-
-
-if __name__ == "__main__":
-    from generate_synthetic import generate_all_data
-    from features import compute_all_features
-    from anomaly import compute_all_anomaly_scores
-    
-    # Generate data
-    claims_df, providers_df, members_df, facilities_df = generate_all_data()
-    
-    # Compute features
-    provider_features_df, member_features_df, peer_stats_df, _ = compute_all_features(
-        claims_df, providers_df, members_df
-    )
-    
-    # Compute anomaly scores
-    anomaly_scores_df = compute_all_anomaly_scores(
-        provider_features_df,
-        member_features_df,
-        peer_stats_df
-    )
-    
-    # Build graph
-    print("\n=== Building Graph ===")
-    G = build_claims_graph(claims_df, anomaly_scores_df)
-    
-    # Test find_connections for network case
-    print("\n=== Connections for P-6610 (Network Case) ===")
-    connections = find_connections(G, 'P-6610', depth=2)
-    print(f"Total connected entities: {connections['total_entities']}")
-    print(f"Connection density: {connections['connection_density']}")
-    print("Top connected (by anomaly score):")
-    for entity in connections['connected_entities'][:10]:
-        print(f"  {entity['entity_id']} ({entity['entity_type']}): anomaly={entity['anomaly_score']:.2f}, dist={entity['distance']}")
-    
-    # Find rings
-    print("\n=== Finding Fraud Rings ===")
-    rings = find_rings(G, anomaly_scores_df, min_anomaly_score=0.5, min_entities=3)
-    print(f"Found {len(rings)} potential rings")
-    
-    for i, ring in enumerate(rings[:3]):
-        print(f"\nRing {i+1}:")
-        print(f"  Entities: {ring['entity_count']}")
-        print(f"  Avg anomaly: {ring['avg_anomaly_score']}")
-        print(f"  Total billed: ${ring['total_billed']:,.0f}")
-        print(f"  Density: {ring['connection_density']}")
-        
-        # Show entities
-        providers_in_ring = [e for e in ring['entities'] if e['entity_type'] == 'provider']
-        print(f"  Providers: {[e['entity_id'] for e in providers_in_ring[:5]]}")
-    
-    # Referral history
-    print("\n=== Referral History for P-6610 ===")
-    history = get_referral_history(claims_df, 'P-6610', months=12)
-    for record in history[-6:]:
-        print(f"  {record['month']}: {record['total_referrals']} referrals, "
-              f"top source concentration: {record['concentration']:.0%}")
+    return [
+        {
+            "month": str(row["month"]),
+            "policies_issued": int(row["policies_issued"]),
+            "total_face": float(row["total_face"]),
+            "trust_count": int(row["trust_count"]),
+        }
+        for _, row in monthly.iterrows()
+    ]

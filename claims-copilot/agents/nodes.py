@@ -117,13 +117,19 @@ def _safe_agent_invoke(agent, messages: list, agent_name: str, fallback_message:
                 'messages': [AIMessage(content=fallback_message or f"[{agent_name}] Error during analysis: {str(e)[:200]}")]
             }
 
-from .prompts import (
-    ORCHESTRATOR_PROMPT,
-    INVESTIGATION_PROMPT,
-    DOSSIER_PROMPT
-)
-from .tools_investigation import INVESTIGATION_TOOLS
-from .tools_dossier import DOSSIER_TOOLS, clear_tool_cache
+try:
+    from .prompts import (
+        ORCHESTRATOR_PROMPT,
+        INVESTIGATION_PROMPT,
+        DOSSIER_PROMPT
+    )
+    from .tools_investigation import INVESTIGATION_TOOLS
+    from .tools_dossier import DOSSIER_TOOLS, clear_tool_cache
+except ImportError:
+    ORCHESTRATOR_PROMPT = INVESTIGATION_PROMPT = DOSSIER_PROMPT = ""
+    INVESTIGATION_TOOLS = DOSSIER_TOOLS = []
+    def clear_tool_cache(): pass
+# Note: ORCHESTRATOR_PROMPT uses .format() with current_phase, loop_count, findings_summary
 
 
 # ============================================================================
@@ -371,6 +377,17 @@ def investigation_node(state: InvestigationState) -> InvestigationState:
     findings = state.get('findings', {})
     prior = findings.get('last_investigation', '')
     evidence_gaps = findings.get('evidence_gaps', '')
+
+    # First run: always force a real scan — never let orchestrator hallucinations seed fake IDs
+    if not prior:
+        last_message = HumanMessage(
+            content=(
+                "Use the scan_suspicious_entities tool first to identify real high-anomaly agents. "
+                "Only use agent IDs returned by that scan for all subsequent tool calls. "
+                "Do NOT invent or assume any agent IDs."
+            )
+        )
+
     if prior:
         # Truncate prior findings to avoid exceeding model context window
         truncated_prior = _truncate_text(prior, MAX_PRIOR_FINDINGS, "prior findings")
@@ -514,7 +531,7 @@ def dossier_node(state: InvestigationState) -> InvestigationState:
         if isinstance(msg, ToolMessage):
             # Check if this is from compile_dossier by looking at the content
             content = _extract_text(msg.content) if msg.content else ''
-            if content.startswith('# FRAUD INVESTIGATION DOSSIER') or 'FRAUD INVESTIGATION DOSSIER' in content[:100]:
+            if any(kw in content[:150] for kw in ['INVESTIGATION DOSSIER', 'CONTESTABLE CLAIM', 'STOLI', 'AML INVESTIGATION', 'AGENT MISCONDUCT']):
                 dossier_content = content
                 _log('Dossier', f'Found compile_dossier output: {len(dossier_content)} chars')
                 break
@@ -546,7 +563,7 @@ def dossier_node(state: InvestigationState) -> InvestigationState:
         # Check if evidence was assessed as sufficient
         # IMPORTANT: check for INSUFFICIENT first — "SUFFICIENT" is a substring of "INSUFFICIENT"
         content_upper = dossier_content.upper()
-        if 'INSUFFICIENT' in content_upper:
+        if 'INSUFFICIENT' in content_upper or 'NOT SUFFICIENT' in content_upper or 'INCOMPLETE' in content_upper:
             evidence_sufficient = False
             _log('Dossier', 'Evidence assessed as INSUFFICIENT - looping back to investigation')
         elif 'SUFFICIENT' in content_upper:

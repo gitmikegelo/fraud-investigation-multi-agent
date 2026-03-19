@@ -1,19 +1,11 @@
-"""
-Agents module for Claims Investigation Copilot.
-Contains LangGraph agent definitions, tools, and prompts.
-"""
+"""Agents module for Prudential Supplemental Health Examiner Workflow Copilot."""
 
-from .graph import create_investigation_graph, run_investigation
-from .nodes import InvestigationState
-from .tools_investigation import INVESTIGATION_TOOLS, set_context as set_investigation_context
-from .tools_dossier import DOSSIER_TOOLS, set_context as set_dossier_context
+from .copilot import handle_analyst_message_sync, get_or_create_session
+from .tools_supplemental import ALL_SUPPLEMENTAL_TOOLS, set_context as set_supplemental_context
+from .nodes import get_bedrock_llm
 
 __all__ = [
-    'create_investigation_graph',
-    'run_investigation',
-    'InvestigationState',
-    'INVESTIGATION_TOOLS',
-    'DOSSIER_TOOLS',
-    'set_investigation_context',
-    'set_dossier_context',
+    'handle_analyst_message_sync', 'get_or_create_session',
+    'ALL_SUPPLEMENTAL_TOOLS', 'set_supplemental_context',
+    'get_bedrock_llm',
 ]

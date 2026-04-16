@@ -385,7 +385,7 @@ def get_referral_history(
     
     history = graph_get_history(_context.claims_df, provider_id, months)
     
-    return _truncate_tool_output(history)
+    return _truncate_tool_output(history, 'get_referral_history')
 
 
 # Tool definitions for LangGraph

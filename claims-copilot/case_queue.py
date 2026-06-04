@@ -121,4 +121,13 @@ def build_case_queue(
     # Sort: HIGH first, then risk_score descending
     order = {CasePriority.HIGH: 0, CasePriority.MEDIUM: 1, CasePriority.LOW: 2}
     cases.sort(key=lambda c: (order[c.priority], -c.risk_score))
-    return cases
+
+    # Deduplicate by member — keep only the highest-risk claim per member
+    seen_members = {}
+    deduped = []
+    for c in cases:
+        mid = c.member_id or c.subject_id
+        if mid not in seen_members:
+            seen_members[mid] = True
+            deduped.append(c)
+    return deduped

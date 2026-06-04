@@ -52,7 +52,7 @@ You pick what to work first. The platform helps you prioritize, but you're in th
 
 ## The Copilot: Like Having a Second Set of Eyes
 
-Click into any claim and you're in a conversation with your AI copilot. It's powered by a large language model — the same kind of technology behind ChatGPT — but trained on how supplemental health claims work. Think of it as a really well-informed colleague sitting next to you who's already read the file and knows the policy rules.
+Click into any claim and you're in a conversation with your AI copilot. It's powered by a large language model (Claude on AWS Bedrock) — but configured specifically for supplemental health claims work. Think of it as a really well-informed colleague sitting next to you who's already read the file, knows the policy rules, and has access to 16 examination tools they can call on your behalf.
 
 **You can ask it anything in plain English:**
 
@@ -112,7 +112,7 @@ Three members from three different employers all list the same eight "dependents
 One provider submits 15 hospital indemnity claims in a single month with near-identical documentation across different patients.
 
 🚩 **The Tampered Records**
-Medical records with mixed fonts, erasure marks, typed dates over handwritten originals, submitted as an editable Word document via email. In production, an AI vision model examines the actual document images to detect these anomalies — font inconsistencies, evidence of digital alteration, signatures that appear stamped rather than handwritten. Five red flags on one document.
+Medical records with mixed fonts, erasure marks, typed dates over handwritten originals, submitted as an editable Word document via email. The platform's AI vision model (Claude Haiku 4.5) examines the actual document images to detect these anomalies — font inconsistencies, evidence of digital alteration, signatures that appear stamped rather than handwritten. Five red flags on one document.
 
 🚩 **The Policy Change Exploit**
 Four claims for outpatient surgical repair filed the day after a policy change expanded coverage. All from the same employer group.
@@ -133,7 +133,7 @@ The AI copilot presents both sides. It flags the concern *and* gives you the inn
 
 ## Document Review: 13 Things to Look For, Checked on Every Claim
 
-Every claim's supporting documentation runs through a standardized review. Think of it as the document checklist you carry in your head — but applied consistently to every single claim. In production, an AI vision model analyzes the actual document images, while an OCR layer extracts and verifies the text content.
+Every claim's supporting documentation runs through a standardized review. Think of it as the document checklist you carry in your head — but applied consistently to every single claim. An AI vision model (Claude Haiku 4.5 on AWS Bedrock) analyzes the actual document images for tampering indicators, while 13 automated checks verify metadata, formatting, and cross-references.
 
 **High-priority flags:**
 - Mixed font styles within the same document
@@ -230,18 +230,34 @@ When you spot a pattern, you can click into any node to see the claims involved 
 
 ---
 
+## Autonomous Investigation: The System Does the Legwork
+
+For high-risk claims, the platform can run a full autonomous investigation — not just answer your questions, but proactively gather evidence, assess whether it's sufficient, and compile a complete dossier.
+
+Here's what makes it different from a simple report generator: **it knows when it doesn't have enough.** The investigation runs through a three-phase loop:
+
+1. **Investigate** — The AI scans entities, profiles suspicious members, traces connections, compares to peer baselines
+2. **Assess** — It checks six evidence criteria: Are there enough independent data points? Is the statistical significance there? Is there network evidence? Regulatory citations? Document integrity findings?
+3. **Decide** — If the evidence is insufficient, it goes *back* to investigation and digs deeper. It doesn't just hand you a half-baked report.
+
+In the prototype, the hero case goes through this loop twice — the first dossier attempt is rejected for insufficient evidence, the system investigates further, and only then produces a complete referral.
+
+---
+
 ## Escalation: The Package Writes Itself
 
-When a claim needs to go to SIU, the AI copilot generates a complete referral package based on everything uncovered during your investigation:
+When a claim needs to go to SIU, the investigation produces a complete referral dossier:
 
 - 📅 Timeline of events
-- 📄 Evidence summary with specific data points
-- 🕸️ Network diagram (if applicable)
-- 💰 Dollar exposure
+- 📄 Evidence summary with specific data points and quantitative backing
+- 🕸️ Network diagram showing entity connections
+- 💰 Recovery estimate with collectability factors
 - ⚙️ Rules triggered with explanations
+- 📋 Regulatory violations cited by section
+- 🔍 Similar precedent cases and their outcomes
 - 📝 Recommended action
 
-No more spending 30 minutes writing up what you found. The AI documents everything as you work, and the escalation package pulls it all together.
+No more spending 30 minutes writing up what you found. The AI documents everything as it works, and the escalation dossier pulls it all together — with evidence that's been assessed for sufficiency before it reaches you.
 
 ---
 
@@ -277,8 +293,9 @@ The prototype is ready for a live walkthrough. In about seven minutes, we can sh
 2. How a routine claim goes from open to done in two minutes
 3. What happens when the AI catches something you wouldn't see on your own
 4. How the network view reveals connected fraud
-5. What a fair investigation looks like — red flags *and* innocent explanations
-6. How an escalation package generates itself
+5. How the autonomous investigation runs, rejects its own dossier, and digs deeper
+6. What a fair investigation looks like — red flags *and* innocent explanations
+7. How an escalation dossier generates itself — with evidence assessed for sufficiency
 
 We built this for your workflow. We'd love to show you how it fits.
 

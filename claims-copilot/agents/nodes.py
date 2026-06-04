@@ -531,7 +531,7 @@ def dossier_node(state: InvestigationState) -> InvestigationState:
         if isinstance(msg, ToolMessage):
             # Check if this is from compile_dossier by looking at the content
             content = _extract_text(msg.content) if msg.content else ''
-            if any(kw in content[:150] for kw in ['INVESTIGATION DOSSIER', 'CONTESTABLE CLAIM', 'STOLI', 'AML INVESTIGATION', 'AGENT MISCONDUCT']):
+            if any(kw in content[:150] for kw in ['INVESTIGATION DOSSIER', 'SUPPLEMENTAL HEALTH', 'FRAUD DOSSIER', 'DEPENDENT FRAUD', 'PROVIDER MILL']):
                 dossier_content = content
                 _log('Dossier', f'Found compile_dossier output: {len(dossier_content)} chars')
                 break

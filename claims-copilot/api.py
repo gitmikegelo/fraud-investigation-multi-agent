@@ -12,6 +12,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -66,6 +69,11 @@ async def lifespan(app: FastAPI):
     try:
         from agents.tools_supplemental import set_context as set_supp_context
         set_supp_context(data_ctx)
+    except ImportError:
+        pass
+    try:
+        from agents.tools_investigation import set_context as set_inv_context
+        set_inv_context(data_ctx)
     except ImportError:
         pass
     try:
@@ -701,6 +709,366 @@ async def chat_websocket(websocket: WebSocket, claim_id: str):
                 })
     except WebSocketDisconnect:
         pass
+
+
+# ── Investigation WebSocket (3-Agent Orchestration) ─────────────────────────
+
+import time as _time
+from demo_config import is_demo_mode
+
+# ---------------------------------------------------------------------------
+# Helpers – send typed events over WebSocket
+# ---------------------------------------------------------------------------
+async def ws_send(ws: WebSocket, event_type: str, data: dict):
+    """Send a JSON event over WebSocket."""
+    payload = {"type": event_type, "timestamp": datetime.now().isoformat(), **data}
+    await ws.send_json(payload)
+
+
+# ---------------------------------------------------------------------------
+# Patched _log that also pushes to the active WebSocket and writes to file
+# ---------------------------------------------------------------------------
+_active_ws: Optional[WebSocket] = None
+_active_loop: Optional[asyncio.AbstractEventLoop] = None
+_active_log_file = None
+_log_file_path = None
+
+_original_node_log = None
+_original_tool_log_inv = None
+_original_tool_log_dos = None
+
+
+def _make_ws_log(agent_label: str, original_fn):
+    """Create a patched log function that also sends WS events and writes to log file."""
+    def _patched(agent_or_name: str, message: str):
+        if original_fn:
+            original_fn(agent_or_name, message)
+        if _active_log_file:
+            try:
+                _active_log_file.write(f"{agent_or_name}\n{message}\n")
+                _active_log_file.flush()
+            except Exception:
+                pass
+        if _active_ws and _active_loop:
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    ws_send(_active_ws, "log", {"agent": agent_or_name, "message": message}),
+                    _active_loop,
+                )
+            except Exception:
+                pass
+    return _patched
+
+
+def _patch_loggers(ws: WebSocket, loop: asyncio.AbstractEventLoop):
+    """Monkey-patch the _log / _tool_log functions to pipe to WS and file."""
+    global _active_ws, _active_loop, _active_log_file, _log_file_path
+    global _original_node_log, _original_tool_log_inv, _original_tool_log_dos
+    _active_ws = ws
+    _active_loop = loop
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    logs_dir = os.path.join(os.path.dirname(__file__), "..", "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    _log_file_path = os.path.join(logs_dir, f"investigation_{timestamp}.txt")
+    _active_log_file = open(_log_file_path, "w", encoding="utf-8")
+    print(f"[API] Logging to: logs/investigation_{timestamp}.txt")
+
+    import agents.nodes as nodes_mod
+    tinv = None
+    tdos = None
+    try:
+        import agents.tools_investigation as tinv
+    except ImportError:
+        pass
+    try:
+        import agents.tools_dossier as tdos
+    except ImportError:
+        pass
+
+    if _original_node_log is None:
+        _original_node_log = nodes_mod._log
+        _original_tool_log_inv = getattr(tinv, '_tool_log', None) if tinv else None
+        _original_tool_log_dos = getattr(tdos, '_tool_log', None) if tdos else None
+
+    nodes_mod._log = _make_ws_log("node", _original_node_log)
+    if tinv and hasattr(tinv, '_tool_log'):
+        tinv._tool_log = _make_ws_log("tool", _original_tool_log_inv)
+    if tdos and hasattr(tdos, '_tool_log'):
+        tdos._tool_log = _make_ws_log("tool", _original_tool_log_dos)
+
+
+def _unpatch_loggers():
+    global _active_ws, _active_loop, _active_log_file, _log_file_path
+    import agents.nodes as nodes_mod
+
+    if _original_node_log:
+        nodes_mod._log = _original_node_log
+    try:
+        import agents.tools_investigation as tinv
+        if _original_tool_log_inv:
+            tinv._tool_log = _original_tool_log_inv
+    except ImportError:
+        pass
+    try:
+        import agents.tools_dossier as tdos
+        if _original_tool_log_dos:
+            tdos._tool_log = _original_tool_log_dos
+    except ImportError:
+        pass
+
+    if _active_log_file:
+        try:
+            _active_log_file.close()
+            print(f"[API] Logs saved to: {_log_file_path}")
+        except Exception:
+            pass
+        _active_log_file = None
+        _log_file_path = None
+
+    _active_ws = None
+    _active_loop = None
+
+
+def _build_investigation_query(claim_id: str, case, checklist_context: dict = None) -> str:
+    """Build a focused initial query for the 3-agent orchestration scoped to one claim."""
+    claim = data_ctx.get_claim(claim_id) if data_ctx else None
+    member = data_ctx.get_member(claim.member_id) if claim else None
+    risk = data_ctx.claim_risk_scores.get(claim_id) if data_ctx else None
+    rules = data_ctx.claim_rules.get(claim_id, []) if data_ctx else []
+    doc_results = data_ctx.claim_doc_results.get(claim_id, []) if data_ctx else []
+
+    triggered_rules = [r for r in rules if r.triggered]
+    failed_docs = [d for d in doc_results if not d.passed]
+
+    lines = [
+        f"Investigate claim {claim_id} for potential fraud.",
+        f"Subject: {case.subject_name} ({case.subject_id})",
+        f"Claim type: {case.claim_type.value if hasattr(case.claim_type, 'value') else case.claim_type}",
+        f"Risk score: {case.risk_score}",
+    ]
+    if claim:
+        lines.append(f"Claim amount: ${claim.claim_amount:,.2f}")
+        lines.append(f"Provider: {claim.provider_id}")
+        lines.append(f"Member: {claim.member_id}")
+    if risk:
+        lines.append(f"Risk tier: {risk.tier}")
+        if risk.top_factors:
+            lines.append(f"Top risk factors: {'; '.join(risk.top_factors[:5])}")
+    if triggered_rules:
+        lines.append(f"Rules triggered ({len(triggered_rules)}):")
+        for r in triggered_rules[:5]:
+            lines.append(f"  [{r.severity}] {r.rule_name}: {r.explanation}")
+    if failed_docs:
+        lines.append(f"Document check failures ({len(failed_docs)}):")
+        for d in failed_docs[:5]:
+            lines.append(f"  [{d.severity}] {d.check_name}: {d.explanation}")
+    if member and member.suspicious_banner:
+        lines.append("⚠ SUSPICIOUS BANNER ACTIVE on member")
+
+    if checklist_context and checklist_context.get("steps"):
+        lines.append("\n--- PRIOR CHECKLIST FINDINGS ---")
+        for step in checklist_context["steps"]:
+            status = step.get("status", "unknown")
+            lines.append(f"[Step {step.get('step_number')}: {step.get('step_name')}] status={status}")
+            for f in (step.get("findings") or [])[:5]:
+                lines.append(f"  {f}")
+
+    lines.append("\nStart by scanning for suspicious entities related to this claim's provider and member, then profile them, analyze connections, and compile a complete dossier.")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Run investigation graph in a thread, streaming events via WS
+# ---------------------------------------------------------------------------
+def _run_investigation_sync(ws: WebSocket, loop: asyncio.AbstractEventLoop,
+                            initial_query: str):
+    """Execute the LangGraph workflow synchronously (called from a thread)."""
+    from langchain_core.messages import HumanMessage
+    from agents.graph import create_investigation_graph
+    from agents.nodes import clear_agent_caches
+
+    clear_agent_caches()
+
+    def send(event_type: str, data: dict):
+        asyncio.run_coroutine_threadsafe(ws_send(ws, event_type, data), loop)
+        _time.sleep(0.05)
+
+    send("status", {"message": "Creating investigation graph..."})
+
+    app_graph = create_investigation_graph()
+
+    initial_state = {
+        "messages": [HumanMessage(content=initial_query)],
+        "current_phase": "start",
+        "findings": {},
+        "dossier": "",
+        "evidence_sufficient": False,
+        "loop_count": 0,
+        "compile_loop_count": 0,
+    }
+
+    send("graph_start", {"query": initial_query})
+
+    iterations = 0
+    max_iterations = 15
+    graph_start = _time.time()
+    final_state = None
+
+    best_dossier = ""
+    best_findings = {}
+    best_evidence_sufficient = False
+
+    for state in app_graph.stream(initial_state):
+        iterations += 1
+        elapsed = _time.time() - graph_start
+        final_state = state
+
+        node_output = list(state.values())[0] if state else {}
+
+        step_dossier = node_output.get("dossier", "")
+        if step_dossier and len(step_dossier) > len(best_dossier):
+            best_dossier = step_dossier
+
+        step_findings = node_output.get("findings", {})
+        if step_findings:
+            best_findings.update(step_findings)
+
+        if node_output.get("evidence_sufficient"):
+            best_evidence_sufficient = True
+
+        if "orchestrator" in state:
+            node_state = state["orchestrator"]
+            send("node_enter", {"node": "orchestrator", "iteration": iterations})
+            send("phase_change", {
+                "phase": node_state.get("current_phase", "unknown"),
+                "loop_count": node_state.get("loop_count", 0),
+            })
+            send("node_exit", {
+                "node": "orchestrator",
+                "elapsed": round(elapsed, 1),
+                "phase": node_state.get("current_phase", "unknown"),
+                "loop_count": node_state.get("loop_count", 0),
+            })
+        elif "investigation" in state:
+            node_state = state["investigation"]
+            send("node_enter", {"node": "investigation", "iteration": iterations})
+            findings = node_state.get("findings", {})
+            summary = findings.get("last_investigation", "")[:500]
+            send("node_exit", {
+                "node": "investigation",
+                "elapsed": round(elapsed, 1),
+                "findings_preview": summary,
+            })
+        elif "dossier" in state:
+            node_state = state["dossier"]
+            send("node_enter", {"node": "dossier", "iteration": iterations})
+            ev_sufficient = node_state.get("evidence_sufficient", False)
+            send("node_exit", {
+                "node": "dossier",
+                "elapsed": round(elapsed, 1),
+                "evidence_sufficient": ev_sufficient,
+            })
+            if not ev_sufficient:
+                gaps = node_state.get("findings", {}).get("evidence_gaps", "")
+                send("dossier_rejected", {
+                    "message": "Dossier rejected — evidence is INSUFFICIENT. Looping back.",
+                    "evidence_gaps": gaps,
+                })
+            else:
+                send("dossier_accepted", {
+                    "message": "Dossier accepted — evidence is SUFFICIENT.",
+                })
+
+        if iterations >= max_iterations:
+            send("status", {"message": f"Reached max iterations ({max_iterations})"})
+            break
+
+        if node_output.get("current_phase") == "done":
+            break
+
+    total_time = _time.time() - graph_start
+    last = list(final_state.values())[-1] if final_state else {}
+    result = {
+        "iterations": iterations,
+        "total_time": round(total_time, 1),
+        "phase": last.get("current_phase", "unknown"),
+        "loop_count": last.get("loop_count", 0),
+        "evidence_sufficient": best_evidence_sufficient,
+        "dossier": best_dossier,
+        "findings": {k: str(v) for k, v in best_findings.items()},
+    }
+    send("investigation_complete", result)
+
+
+@app.websocket("/ws/investigate/{claim_id}")
+async def investigate_websocket(websocket: WebSocket, claim_id: str):
+    """WebSocket endpoint for 3-agent fraud investigation scoped to a single claim."""
+    await websocket.accept()
+    if not data_ctx:
+        await ws_send(websocket, "error", {"message": "Data not loaded"})
+        await websocket.close()
+        return
+
+    case = data_ctx.get_case(claim_id)
+    if not case:
+        await ws_send(websocket, "error", {"message": f"Claim {claim_id} not found"})
+        await websocket.close()
+        return
+
+    # Receive initial config (action + checklist context)
+    try:
+        init_data = await asyncio.wait_for(websocket.receive_json(), timeout=10)
+    except Exception:
+        init_data = {}
+
+    checklist_context = init_data.get("checklist_context", None)
+
+    await ws_send(websocket, "connected", {
+        "claim_id": claim_id,
+        "subject_name": case.subject_name,
+        "message": f"Connected — investigating {case.subject_name}",
+    })
+
+    loop = asyncio.get_event_loop()
+
+    try:
+        if is_demo_mode():
+            from demo_runner import run_demo_investigation_sync
+            _patch_loggers(websocket, loop)
+            try:
+                demo_dossier = await loop.run_in_executor(
+                    None, run_demo_investigation_sync, websocket, loop
+                )
+            finally:
+                _unpatch_loggers()
+            if demo_dossier:
+                case.dossier = demo_dossier
+        else:
+            initial_query = _build_investigation_query(claim_id, case, checklist_context)
+            _patch_loggers(websocket, loop)
+            try:
+                await loop.run_in_executor(
+                    None, _run_investigation_sync, websocket, loop, initial_query
+                )
+            finally:
+                _unpatch_loggers()
+
+            # Cache dossier on the case (best_dossier is set by _run_investigation_sync)
+            try:
+                if best_dossier:
+                    case.dossier = best_dossier
+            except NameError:
+                pass
+    except WebSocketDisconnect:
+        _unpatch_loggers()
+    except Exception as e:
+        traceback.print_exc()
+        try:
+            await ws_send(websocket, "error", {"message": str(e)[:500]})
+        except Exception:
+            pass
+        _unpatch_loggers()
 
 
 if __name__ == "__main__":

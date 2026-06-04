@@ -36,7 +36,7 @@ const TYPE_CHIPS = {
   ],
 }
 
-export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNavigateToDossier }) {
+export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNavigateToDossier, onStartAutoScan }) {
   const { messages, isThinking, isConnected, checklistState, checklistRunning, sendMessage, runChecklist } = useCopilotChat(caseId)
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
@@ -148,7 +148,7 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
       }}>
         {messages.map((msg, i) => (
           msg.role === 'checklist'
-            ? <ChecklistCard key={i} msg={msg} />
+            ? <ChecklistCard key={i} msg={msg} onStartAutoScan={onStartAutoScan} />
             : <MessageBubble key={i} msg={msg} onNavigateToDossier={onNavigateToDossier} />
         ))}
 
@@ -327,7 +327,7 @@ const STATUS_CONFIG = {
   error:        { icon: '⚠', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)',   label: 'Error' },
 }
 
-function ChecklistCard({ msg }) {
+function ChecklistCard({ msg, onStartAutoScan }) {
   const [expandedStep, setExpandedStep] = useState(null)
   const [docImageUrl, setDocImageUrl] = useState(null)
   const { steps, summary, complete } = msg
@@ -544,6 +544,32 @@ function ChecklistCard({ msg }) {
                 {summary.failed} Failed
               </span>
             )}
+          </div>
+        )}
+
+        {/* Launch Auto Scan button */}
+        {complete && onStartAutoScan && (
+          <div style={{ padding: '12px 18px', borderTop: '1px solid var(--c-border)' }}>
+            <button
+              onClick={() => onStartAutoScan({ steps, summary })}
+              style={{
+                width: '100%', padding: '10px 16px', borderRadius: 10,
+                border: 'none', cursor: 'pointer',
+                background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+                color: '#fff', fontSize: 13, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(99,102,241,0.3)',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.4)' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(99,102,241,0.3)' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 4V1.5A.5.5 0 011.5 1H4"/><path d="M11 1h2.5a.5.5 0 01.5.5V4"/>
+                <path d="M14 11v2.5a.5.5 0 01-.5.5H11"/><path d="M4 14H1.5a.5.5 0 01-.5-.5V11"/>
+                <line x1="1" y1="7.5" x2="14" y2="7.5"/>
+              </svg>
+              Launch AI Fraud Analysis →
+            </button>
           </div>
         )}
       </div>

@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import CaseQueue from './components/CaseQueue'
 import ChatPanel from './components/ChatPanel'
 import RiskDashboard from './components/RiskDashboard'
 import DossierPanel from './components/DossierPanel'
+import AutoScan from './components/AutoScan'
 
 // ── SVG Icons ──────────────────────────────────────────────────────────────
 const IconQueue = () => (
@@ -29,10 +30,18 @@ const IconFile = () => (
     <path d="M9.5.5V4H13"/><line x1="5" y1="7.5" x2="10" y2="7.5"/><line x1="5" y1="10" x2="8" y2="10"/>
   </svg>
 )
+const IconScan = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 4V1.5A.5.5 0 011.5 1H4"/><path d="M11 1h2.5a.5.5 0 01.5.5V4"/>
+    <path d="M14 11v2.5a.5.5 0 01-.5.5H11"/><path d="M4 14H1.5a.5.5 0 01-.5-.5V11"/>
+    <line x1="1" y1="7.5" x2="14" y2="7.5"/>
+  </svg>
+)
 
 const NAV = [
   { id: 'queue',     label: 'Claims Queue',  Icon: IconQueue },
   { id: 'copilot',   label: 'Copilot',       Icon: IconChat },
+  { id: 'autoscan',  label: 'Auto Scan',     Icon: IconScan },
   { id: 'dashboard', label: 'Dashboard',     Icon: IconDashboard },
   { id: 'dossier',   label: 'Dossier',       Icon: IconFile },
 ]
@@ -40,6 +49,8 @@ const NAV = [
 export default function App() {
   const [activeView, setActiveView] = useState('queue')
   const [selectedCase, setSelectedCase] = useState(null)
+  // Persist checklist context so Auto Scan can receive it
+  const checklistContextRef = useRef(null)
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--c-bg)' }}>
@@ -154,18 +165,42 @@ export default function App() {
           {activeView === 'queue' && (
             <CaseQueue onSelectCase={(c) => { setSelectedCase(c); setActiveView('copilot') }} />
           )}
-          {activeView === 'copilot' && selectedCase && (
-            <ChatPanel
-              caseId={selectedCase.case_id}
-              caseType={selectedCase.case_type}
-              caseSummary={selectedCase}
-              onBack={() => setActiveView('queue')}
-              onNavigateToDossier={() => setActiveView('dossier')}
-            />
+          {/* Keep ChatPanel mounted (hidden) so chat history persists across view switches */}
+          {selectedCase && (
+            <div style={{ height: '100%', display: activeView === 'copilot' ? 'flex' : 'none', flexDirection: 'column' }}>
+              <ChatPanel
+                caseId={selectedCase.case_id}
+                caseType={selectedCase.case_type}
+                caseSummary={selectedCase}
+                onBack={() => setActiveView('queue')}
+                onNavigateToDossier={() => setActiveView('dossier')}
+                onStartAutoScan={(checklistCtx) => {
+                  checklistContextRef.current = checklistCtx
+                  setActiveView('autoscan')
+                }}
+              />
+            </div>
           )}
           {activeView === 'copilot' && !selectedCase && (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--c-text-dim)', fontSize: 13 }}>
               Select a claim from the queue to start reviewing.
+            </div>
+          )}
+          {/* Keep AutoScan mounted (hidden) so investigation state persists across view switches */}
+          {selectedCase && checklistContextRef.current && (
+            <div style={{ height: '100%', display: activeView === 'autoscan' ? 'flex' : 'none', flexDirection: 'column' }}>
+              <AutoScan
+                caseId={selectedCase.case_id}
+                caseSummary={selectedCase}
+                checklistContext={checklistContextRef.current}
+                onBack={() => setActiveView('copilot')}
+                onNavigateToDossier={() => setActiveView('dossier')}
+              />
+            </div>
+          )}
+          {activeView === 'autoscan' && !selectedCase && (
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--c-text-dim)', fontSize: 13 }}>
+              Select a claim and run the checklist first.
             </div>
           )}
           {activeView === 'dashboard' && (

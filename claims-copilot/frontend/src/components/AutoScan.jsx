@@ -6,9 +6,9 @@ import EventTimeline from './EventTimeline'
 import { useInvestigation } from '../hooks/useInvestigation'
 
 const PHASE_COLOR = {
-  'Initializing':        '#6366f1',
+  'Initializing':        '#a100ff',
   'Initial Analysis':    '#a855f7',
-  'Agent Orchestration': '#3b82f6',
+  'Agent Orchestration': '#2962ff',
   'Investigating':       '#16a34a',
   'Compiling':           '#d97706',
   'Done':                '#16a34a',
@@ -27,7 +27,7 @@ export default function AutoScan({ caseId, caseSummary, checklistContext, onBack
 
   const isRunning = status === 'running' || status === 'connecting'
   const isComplete = status === 'complete'
-  const phaseColor = PHASE_COLOR[phase] || '#6366f1'
+  const phaseColor = PHASE_COLOR[phase] || '#a100ff'
   const fmt = (s) => { const m = Math.floor(s / 60); return m > 0 ? `${m}m ${s % 60}s` : `${s}s` }
 
   // Auto-start on mount
@@ -67,7 +67,7 @@ export default function AutoScan({ caseId, caseSummary, checklistContext, onBack
           color: 'var(--c-text-dim)', cursor: 'pointer', padding: '4px 10px', fontSize: 12,
         }}>← Copilot</button>
 
-        <span style={{ fontSize: 14, fontWeight: 700, color: '#818cf8', fontFamily: 'ui-monospace, monospace' }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-blue)', fontFamily: 'ui-monospace, monospace' }}>
           {caseId}
         </span>
         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)', flex: 1 }}>
@@ -79,7 +79,7 @@ export default function AutoScan({ caseId, caseSummary, checklistContext, onBack
             <Chip color="#64748b" bg="var(--c-surface2)" border="var(--c-border)">Ready</Chip>
           )}
           {status === 'connecting' && (
-            <Chip color="#6366f1" bg="#eef2ff" border="#c7d2fe">Connecting…</Chip>
+            <Chip color="var(--c-accent)" bg="var(--c-accent-light)" border="var(--c-accent-soft)">Connecting…</Chip>
           )}
           {isRunning && (
             <Chip color="#15803d" bg="var(--c-green-bg, rgba(34,197,94,0.1))" border="var(--c-green-border, rgba(34,197,94,0.3))" pulse>
@@ -101,9 +101,10 @@ export default function AutoScan({ caseId, caseSummary, checklistContext, onBack
 
           {isComplete && dossier && (
             <button onClick={() => setShowDossier(!showDossier)} style={{
-              fontSize: 11, padding: '5px 14px', borderRadius: 8,
-              border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.1)',
-              color: '#818cf8', cursor: 'pointer', fontWeight: 600,
+              fontSize: 11, padding: '5px 14px', borderRadius: 'var(--r-btn)',
+              border: '1px solid var(--c-accent)', background: 'transparent',
+              color: 'var(--c-accent)', cursor: 'pointer', fontWeight: 600,
+              textTransform: 'uppercase', letterSpacing: '0.03em',
             }}>
               {showDossier ? 'Show Graph' : 'View Dossier'}
             </button>
@@ -170,8 +171,9 @@ export default function AutoScan({ caseId, caseSummary, checklistContext, onBack
           <div style={{ height: '100%', overflow: 'auto', padding: 24 }}>
             <div style={{ maxWidth: 860, margin: '0 auto' }}>
               <div style={{
-                background: 'var(--c-surface)', borderRadius: 14,
+                background: 'var(--c-surface)', borderRadius: 'var(--r-card)',
                 border: '1px solid var(--c-border)', padding: '24px 28px',
+                boxShadow: 'var(--c-shadow-sm)',
               }}>
                 <div className="chat-markdown">
                   <Markdown remarkPlugins={[remarkGfm]}>{dossier}</Markdown>
@@ -188,6 +190,7 @@ export default function AutoScan({ caseId, caseSummary, checklistContext, onBack
                 <GraphView
                   activeNode={activeNode} phase={phase}
                   nodeHistory={nodeHistory} isRunning={isRunning}
+                  loopCount={loopCount} elapsed={elapsed}
                   initialClaims={[]}
                 />
               </div>

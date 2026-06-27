@@ -48,7 +48,58 @@ _MEDIA_TYPES = {
 
 # ── Vision prompt ────────────────────────────────────────────────────────────
 
-_VISION_PROMPT = """\
+_TRAVEL_VISION_PROMPT = """\
+You are a travel insurance claims forensics analyst for Zurich Travel Guard.
+You inspect evidence images submitted with travel claims — most commonly photos of
+damaged or lost baggage, but also receipts, police reports, boarding passes, hotel
+invoices, and overseas medical reports. Your job is to assess whether the image is a
+legitimate, authentic piece of supporting evidence or shows signs of fabrication,
+exaggeration, or tampering.
+
+First decide what KIND of image this is (a real-world photo such as damaged luggage,
+or a document/paperwork scan). Then evaluate it against ALL 13 checks below.
+For EACH check, provide a JSON object with your finding. If a check does not apply to
+this image type (e.g. a font check on a luggage photo), mark it passed=true with a
+short "not applicable for this image type" explanation.
+
+THE 13 EVIDENCE CHECKS:
+
+DOC-001  Digital Manipulation — Are there signs of photo editing: cloning, warped edges, mismatched lighting/shadows, or copy-pasted regions?
+DOC-002  Staged or Inconsistent Damage — For damaged-baggage photos, does the damage look staged or inconsistent (e.g. pristine luxury contents in a "destroyed" bag, damage that doesn't match the claimed cause)?
+DOC-003  Stock or Reused Image — Does this look like a stock photo, a watermarked image, or a picture reused from the internet rather than the claimant's own item?
+DOC-004  Metadata/Capture Inconsistency — Are there visible timestamp, watermark, or screenshot artifacts that conflict with the claimed incident date or location?
+DOC-005  Missing Identifying Detail — For a baggage/property photo, is there NO visible airline tag, luggage tag, room context, or other detail tying the item to the claimant's actual trip?
+DOC-006  Implausible Item Value — Do the visible items look inconsistent with a high-value claim (e.g. generic items photographed for a "designer goods" claim, or items that appear new with tags for a "used personal effects" claim)?
+DOC-007  Font Inconsistency — For a document/receipt/report, are there multiple font styles or families within the same page suggesting edited fields?
+DOC-008  Altered Amounts or Dates — For a receipt, invoice, or booking confirmation, do any amounts, dates, or names show overwriting, misalignment, or digit tampering?
+DOC-009  Editable/Template Format — Does a document appear to be a self-made Word/template/spreadsheet rather than an issued receipt, official police report, or airline-issued boarding pass?
+DOC-010  Missing Official Markings — Does a document lack expected official markings (issuer logo, police report number, airline PNR/booking reference, stamp, or letterhead)?
+DOC-011  Signature/Stamp Anomaly — Does any signature or official stamp look photocopied, pasted, or inconsistent with a genuine issued document?
+DOC-012  Screenshot/Forwarded Submission — Does the image appear to be a screenshot, a photo-of-a-screen, or an emailed/forwarded artifact rather than an original document or photo?
+DOC-013  Provider/Issuer Mismatch — Do any details (logo, address, currency, language) conflict with the claimed destination, airline, hotel, or medical provider for this trip?
+
+RESPOND WITH ONLY valid JSON — no markdown fences, no commentary outside the JSON.
+Use this exact structure:
+
+{
+  "checks": [
+    {
+      "check_id": "DOC-001",
+      "check_name": "Digital Manipulation",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "No signs of editing; lighting and edges are consistent."
+    }
+  ],
+  "overall_assessment": "Brief 1-2 sentence summary of whether this evidence appears legitimate.",
+  "confidence": 0.92
+}
+
+Severity values: "CRITICAL" for high-risk failures, "WARNING" for medium, "INFO" for low/pass.
+Set passed=true if the check finds NO issues, passed=false if an issue IS detected.
+"""
+
+_SUPPLEMENTAL_VISION_PROMPT = """\
 You are a medical document forensics analyst for a supplemental health insurance company.
 Examine this document image and evaluate it against ALL 13 checks below.
 For EACH check, provide a JSON object with your finding.
@@ -89,6 +140,10 @@ Use this exact structure:
 Severity values: "CRITICAL" for high-risk failures, "WARNING" for medium, "INFO" for low/pass.
 Set passed=true if the check finds NO issues, passed=false if an issue IS detected.
 """
+
+# Domain is locked to "travel" (see main.py). Env var is intentionally ignored.
+_DOMAIN_MODE = "travel"
+_VISION_PROMPT = _TRAVEL_VISION_PROMPT
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

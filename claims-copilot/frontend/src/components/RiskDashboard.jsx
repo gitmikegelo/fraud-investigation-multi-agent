@@ -102,7 +102,7 @@ export default function RiskDashboard({ onSelectClaim }) {
                 <tbody>
                   {topRules.slice(0, 10).map(([ruleId, count], i) => (
                     <tr key={i}>
-                      <td style={{ padding: '4px 0', color: '#818cf8', fontFamily: 'ui-monospace, monospace', fontWeight: 600, fontSize: 11 }}>{ruleId}</td>
+                      <td style={{ padding: '4px 0', color: 'var(--c-blue)', fontFamily: 'ui-monospace, monospace', fontWeight: 600, fontSize: 11 }}>{ruleId}</td>
                       <td style={{ padding: '4px 0', textAlign: 'right', color: 'var(--c-text)', fontWeight: 600 }}>{count}</td>
                     </tr>
                   ))}
@@ -155,9 +155,9 @@ export default function RiskDashboard({ onSelectClaim }) {
 function Card({ title, children }) {
   return (
     <div style={{
-      padding: 16, borderRadius: 12,
+      padding: 20, borderRadius: 'var(--r-card)',
       background: 'var(--c-surface)', border: '1px solid var(--c-border)',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+      boxShadow: 'var(--c-shadow-sm)',
     }}>
       <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--c-text-dim)', marginBottom: 12 }}>
         {title}

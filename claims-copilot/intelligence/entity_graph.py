@@ -65,6 +65,14 @@ def build_supplemental_health_graph(data: Dict) -> nx.DiGraph:
 
     # Add claim edges (claims connect members to providers)
     for c in data.get("claims", []):
+        # Add claim node
+        G.add_node(c.claim_id, entity_type="claim",
+                   claim_type=c.claim_type,
+                   benefit_type=getattr(c, "benefit_type", ""),
+                   relationship_type=getattr(c, "relationship_type", "SELF"),
+                   batch_claim_id=getattr(c, "batch_claim_id", None),
+                   fraud_scenario=c.fraud_scenario,
+                   amount=c.claim_amount)
         if c.provider_id:
             G.add_edge(c.member_id, c.provider_id, relationship="TREATED_BY",
                        claim_id=c.claim_id, claim_type=c.claim_type)
@@ -74,6 +82,23 @@ def build_supplemental_health_graph(data: Dict) -> nx.DiGraph:
         if c.facility_id:
             G.add_edge(c.member_id, c.facility_id, relationship="VISITED",
                        claim_id=c.claim_id)
+        # FILED_BY edge: claim -> member
+        G.add_edge(c.claim_id, c.member_id, relationship="FILED_BY")
+        # SAME_EVENT and STACKED_WITH edges
+        for related_id in getattr(c, "related_claim_ids", []):
+            G.add_edge(c.claim_id, related_id, relationship="SAME_EVENT")
+        for stacked_id in getattr(c, "stacked_with", []):
+            G.add_edge(c.claim_id, stacked_id, relationship="STACKED_WITH")
+
+    # Add document nodes
+    for doc in data.get("documents", []):
+        G.add_node(doc.doc_id, entity_type="document",
+                   doc_type=doc.doc_type,
+                   source_type=getattr(doc, "source_type", "PROVIDER_PORTAL"),
+                   font_consistency=getattr(doc, "font_consistency_score", 1.0),
+                   metadata_app=getattr(doc, "metadata_app_signature", None))
+        if G.has_node(doc.claim_id):
+            G.add_edge(doc.doc_id, doc.claim_id, relationship="SUBMITTED_FOR")
 
     return G
 
@@ -170,5 +195,73 @@ def detect_patterns(graph: nx.DiGraph, data: Dict) -> List[PatternResult]:
             severity="HIGH",
             details={"claim_count": len(tampered_claims)},
         ))
+
+    # 6. GP-006: Indemnity Stacking Ring
+    batch_groups: Dict = {}
+    for c in data.get("claims", []):
+        bid = getattr(c, "batch_claim_id", None)
+        if bid:
+            batch_groups.setdefault(bid, []).append(c)
+    for batch_id, batch_claims in batch_groups.items():
+        rel_types = {getattr(c, "relationship_type", "SELF") for c in batch_claims}
+        if len(batch_claims) >= 4 and len(rel_types) >= 2:
+            patterns.append(PatternResult(
+                pattern_type="indemnity_stacking_ring",
+                description=(f"Batch {batch_id}: {len(batch_claims)} claims across "
+                             f"{len(rel_types)} relationship types"),
+                entities=[c.claim_id for c in batch_claims],
+                severity="HIGH" if len(batch_claims) >= 7 and len(rel_types) >= 3 else "MEDIUM",
+                details={"batch_id": batch_id, "claim_count": len(batch_claims),
+                         "relationship_types": list(rel_types)},
+            ))
+
+    # 7. GP-007: Document Source Mismatch
+    facility_map = {f.facility_id: f for f in data.get("facilities", [])}
+    claim_map = {c.claim_id: c for c in data.get("claims", [])}
+    member_mobile: Dict = {}
+    for doc in data.get("documents", []):
+        if (getattr(doc, "source_type", "") == "MOBILE_SCAN"
+                or getattr(doc, "metadata_app_signature", None)):
+            claim = claim_map.get(doc.claim_id)
+            if claim and claim.facility_id:
+                facility = facility_map.get(claim.facility_id)
+                if facility and getattr(facility, "releasepoint_enrolled", False):
+                    member_mobile.setdefault(claim.member_id, []).append(doc.doc_id)
+    for member_id, doc_ids in member_mobile.items():
+        patterns.append(PatternResult(
+            pattern_type="document_source_mismatch",
+            description=(f"Member {member_id}: {len(doc_ids)} mobile-scan doc(s) when "
+                         "facility has ReleasePoint enrolled"),
+            entities=[member_id] + doc_ids,
+            severity="HIGH" if len(doc_ids) >= 2 else "MEDIUM",
+            details={"member_id": member_id, "mobile_doc_count": len(doc_ids)},
+        ))
+
+    # 8. GP-008: Cross-Claim Document Contradiction
+    member_docs: Dict = {}
+    for doc in data.get("documents", []):
+        claim = claim_map.get(doc.claim_id)
+        if claim:
+            member_docs.setdefault(claim.member_id, []).append(doc)
+    trusted = {"RELEASEPOINT", "PROVIDER_PORTAL", "PROVIDER_FAX"}
+    untrusted = {"MOBILE_SCAN", "UNKNOWN", "MEMBER_UPLOAD_PDF", "MEMBER_EMAIL"}
+    for member_id, mdocs in member_docs.items():
+        if len(mdocs) < 2:
+            continue
+        src_types = {getattr(d, "source_type", "PROVIDER_PORTAL") for d in mdocs}
+        if src_types & trusted and src_types & untrusted:
+            bad_docs = [d.doc_id for d in mdocs
+                        if getattr(d, "source_type", "") in untrusted]
+            if bad_docs:
+                patterns.append(PatternResult(
+                    pattern_type="cross_claim_contradiction",
+                    description=(f"Member {member_id}: contradictory document sources "
+                                 "(trusted provider + untrusted member submission)"),
+                    entities=[member_id] + bad_docs,
+                    severity="HIGH",
+                    details={"member_id": member_id,
+                             "source_types": list(src_types),
+                             "untrusted_docs": bad_docs},
+                ))
 
     return patterns

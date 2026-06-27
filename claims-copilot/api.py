@@ -1,4 +1,4 @@
-"""FastAPI Backend for Prudential Supplemental Health Examiner Workflow Copilot."""
+"""FastAPI Backend for Claims Examiner Workflow Copilot (Zurich Travel Guard / Prudential Supplemental Health)."""
 
 import sys
 import os
@@ -12,22 +12,30 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-
-load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from main import initialize_data, DataContext
+try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env'), override=False)
+except ImportError:
+    pass
+
+from main import initialize_data, initialize_travel_data, DataContext, DOMAIN_MODE
 from cases import CaseStatus
-from intelligence.checklist import run_full_checklist, run_checklist_step, CHECKLIST_STEPS
 from intelligence.document_vision import run_vision_document_checks, find_claim_images
+
+if DOMAIN_MODE == "travel":
+    from intelligence.checklist_travel import run_full_checklist, run_checklist_step, CHECKLIST_STEPS
+else:
+    from intelligence.checklist import run_full_checklist, run_checklist_step, CHECKLIST_STEPS
 
 
 def _build_checklist_ctx(claim_id: str) -> dict:
-    """Build checklist context, replacing cached doc results with live vision if images exist."""
+    """Build checklist context for supplemental health mode."""
     live_doc_results = dict(data_ctx.claim_doc_results)
     images = find_claim_images(claim_id)
+    has_images = len(images) > 0
     if images:
         try:
             vision_results = run_vision_document_checks(claim_id)
@@ -44,48 +52,108 @@ def _build_checklist_ctx(claim_id: str) -> dict:
         "claim_rules": data_ctx.claim_rules,
         "claim_risk_scores": data_ctx.claim_risk_scores,
         "claim_doc_results": live_doc_results,
+        "has_claim_images": has_images,
+    }
+
+
+def _build_travel_checklist_ctx(claim_id: str) -> dict:
+    """Build checklist context for travel guard mode.
+
+    Runs live vision analysis on the claim's evidence image (e.g. a damaged-baggage
+    photo or receipt) when one is present, falling back to cached doc results otherwise.
+    """
+    live_doc_results = dict(data_ctx.claim_doc_results)
+    images = find_claim_images(claim_id)
+    has_images = len(images) > 0
+    if images:
+        try:
+            vision_results = run_vision_document_checks(claim_id)
+            if vision_results:
+                live_doc_results[claim_id] = vision_results
+        except Exception as e:
+            print(f"  ⚠ Vision analysis failed for {claim_id}: {e} — using cached metadata")
+    return {
+        "claims": data_ctx.supplemental_claims,
+        "travelers": data_ctx.supplemental_data.get("travelers", []),
+        "companions": data_ctx.supplemental_data.get("companions", []),
+        "destinations": data_ctx.supplemental_data.get("destinations", []),
+        "airlines": data_ctx.supplemental_data.get("airlines", []),
+        "hotels": data_ctx.supplemental_data.get("hotels", []),
+        "providers": data_ctx.supplemental_data.get("providers", []),
+        "policies": data_ctx.supplemental_data.get("policies", []),
+        "bookings": data_ctx.supplemental_data.get("bookings", []),
+        "flights": data_ctx.supplemental_data.get("flights", []),
+        "workflow_tasks": data_ctx.supplemental_data.get("workflow_tasks", []),
+        "claim_rules": data_ctx.claim_rules,
+        "claim_risk_scores": data_ctx.claim_risk_scores,
+        "claim_doc_results": live_doc_results,
+        "has_claim_images": has_images,
     }
 
 data_ctx: Optional[DataContext] = None
 
 # One-liner descriptions shown in the progressive checklist UI
-CHECKLIST_DESCRIPTIONS = {
-    1: "Validating required fields and initial assignment",
-    2: "Confirming policy is active and coverage matches",
-    3: "Running fraud scoring and rule-based screening",
-    4: "Checking dependent anomalies and network flags",
-    5: "Reviewing medical documentation and records status",
-    6: "Verifying coverage limits and policy alignment",
-    7: "Compiling final determination for examiner review",
-}
+if DOMAIN_MODE == "travel":
+    CHECKLIST_DESCRIPTIONS = {
+        1: "Validating required fields and claim completeness",
+        2: "Verifying booking records and trip confirmation",
+        3: "Confirming incident timeline within trip window",
+        4: "AI document analysis, fraud scoring and rule-based screening",
+        5: "Checking provider watchlist and booking validity",
+        6: "Verifying coverage type and policy limits",
+        7: "Compiling final determination for examiner review",
+    }
+else:
+    CHECKLIST_DESCRIPTIONS = {
+        1: "Validating required fields and initial assignment",
+        2: "Confirming policy is active and coverage matches",
+        3: "AI document analysis, fraud scoring and rule-based screening",
+        4: "Checking dependent anomalies and network flags",
+        5: "Reviewing medical documentation and records status",
+        6: "Verifying coverage limits and policy alignment",
+        7: "Compiling final determination for examiner review",
+    }
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global data_ctx
-    print("[API] Initializing data context...")
-    data_ctx = initialize_data()
-    # Set tool contexts
+    print(f"[API] Initializing data context (mode: {DOMAIN_MODE})...")
+    if DOMAIN_MODE == "travel":
+        data_ctx = initialize_travel_data()
+        try:
+            from agents.tools_travel import set_context as set_travel_context
+            set_travel_context(data_ctx)
+        except ImportError:
+            pass
+    else:
+        data_ctx = initialize_data()
+        try:
+            from agents.tools_supplemental import set_context as set_supp_context
+            set_supp_context(data_ctx)
+        except ImportError:
+            pass
+    # Investigation + dossier tool context (travel vs supplemental tool modules)
+    if DOMAIN_MODE == "travel":
+        _inv_mod, _dossier_mod = "agents.tools_investigation_travel", "agents.tools_dossier_travel"
+    else:
+        _inv_mod, _dossier_mod = "agents.tools_investigation", "agents.tools_dossier"
     try:
-        from agents.tools_supplemental import set_context as set_supp_context
-        set_supp_context(data_ctx)
-    except ImportError:
+        import importlib
+        importlib.import_module(_inv_mod).set_context(data_ctx)
+    except (ImportError, AttributeError):
         pass
     try:
-        from agents.tools_investigation import set_context as set_inv_context
-        set_inv_context(data_ctx)
-    except ImportError:
-        pass
-    try:
-        from agents.tools_dossier import set_context as set_dossier_context
-        set_dossier_context(data_ctx)
-    except ImportError:
+        import importlib
+        importlib.import_module(_dossier_mod).set_context(data_ctx)
+    except (ImportError, AttributeError):
         pass
     print(f"[API] Data context ready. {len(data_ctx.case_queue)} claims loaded.")
     yield
 
 
-app = FastAPI(title="Prudential Supplemental Health Examiner Workflow Copilot", lifespan=lifespan)
+_APP_TITLE = "Zurich Travel Guard Examiner Workflow Copilot" if DOMAIN_MODE == "travel" else "Prudential Supplemental Health Examiner Workflow Copilot"
+app = FastAPI(title=_APP_TITLE, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -129,8 +197,17 @@ def _case_to_dict(c):
 
 @app.get("/api/health")
 async def health():
+    # Surface the running process's mode so a stale/wrong-domain server is obvious at a glance.
+    try:
+        import agents.nodes as _nodes
+        _investigation_domain = "travel" if "Zurich Travel Guard" in getattr(_nodes, "INVESTIGATION_PROMPT", "") else "supplemental"
+    except Exception:
+        _investigation_domain = "unknown"
     return {"status": "ok", "data_loaded": data_ctx is not None,
-            "claims_count": len(data_ctx.case_queue) if data_ctx else 0}
+            "claims_count": len(data_ctx.case_queue) if data_ctx else 0,
+            "domain_mode": DOMAIN_MODE,
+            "demo_mode": is_demo_mode(),
+            "investigation_domain": _investigation_domain}
 
 
 @app.get("/api/config")
@@ -342,8 +419,12 @@ async def get_claim_checklist(claim_id: str):
     if not data_ctx:
         return {"error": "Data not loaded"}
 
-    # Build checklist context with live vision analysis for Step 5
-    checklist_ctx = await asyncio.to_thread(_build_checklist_ctx, claim_id)
+    # Build checklist context — both domains run live vision on the claim's evidence
+    # image when present, so build off the event loop to avoid blocking on Bedrock.
+    if DOMAIN_MODE == "travel":
+        checklist_ctx = await asyncio.to_thread(_build_travel_checklist_ctx, claim_id)
+    else:
+        checklist_ctx = await asyncio.to_thread(_build_checklist_ctx, claim_id)
 
     results = run_full_checklist(claim_id, checklist_ctx)
     return {
@@ -434,79 +515,124 @@ async def generate_ai_dossier(claim_id: str):
         return {"error": f"Claim {claim_id} not found"}
 
     claim = data_ctx.get_claim(claim_id)
-    member = data_ctx.get_member(claim.member_id) if claim else None
-    employer = data_ctx.get_employer(claim.employer_id) if claim and claim.employer_id else None
-    provider = data_ctx.get_provider(claim.provider_id) if claim else None
+    # Resolve subject — travel uses traveler_id, supplemental uses member_id
+    subject_id = getattr(claim, 'member_id', None) or getattr(claim, 'traveler_id', '') if claim else ''
+    employer_id = getattr(claim, 'employer_id', '') if claim else ''
+    member = data_ctx.get_member(subject_id) if subject_id and DOMAIN_MODE != 'travel' else None
+    employer = data_ctx.get_employer(employer_id) if employer_id and DOMAIN_MODE != 'travel' else None
+    provider = data_ctx.get_provider(claim.provider_id) if claim and claim.provider_id else None
     policy = data_ctx.get_policy(claim.policy_id) if claim else None
     risk = data_ctx.claim_risk_scores.get(claim_id)
     rules = data_ctx.claim_rules.get(claim_id, [])
     doc_results = data_ctx.claim_doc_results.get(claim_id, [])
     tasks = data_ctx.get_claim_tasks(claim_id)
-    deps = data_ctx.get_member_dependents(claim.member_id) if claim else []
-    member_claims = data_ctx.get_member_claims(claim.member_id) if claim else []
+    deps = data_ctx.get_member_dependents(subject_id) if subject_id and DOMAIN_MODE != 'travel' else []
+    member_claims = data_ctx.get_member_claims(subject_id) if subject_id and DOMAIN_MODE != 'travel' else []
 
     triggered_rules = [r for r in rules if r.triggered]
     failed_docs = [d for d in doc_results if not d.passed]
     critical_docs = [d for d in failed_docs if d.severity == "CRITICAL"]
 
     # Related claims across the book
-    if claim:
+    if claim and DOMAIN_MODE == "travel":
+        traveler_id = getattr(claim, 'traveler_id', '')
+        same_employer_claims = []  # no employer in travel
+        same_provider_claims = [
+            c for c in data_ctx.supplemental_claims
+            if getattr(c, 'provider_id', '') == claim.provider_id and c.claim_id != claim_id
+        ] if claim.provider_id else []
+        traveler_claims = [
+            c for c in data_ctx.supplemental_claims
+            if getattr(c, 'traveler_id', '') == traveler_id and c.claim_id != claim_id
+        ]
+    elif claim:
         same_employer_claims = [
             c for c in data_ctx.supplemental_claims
-            if c.employer_id == claim.employer_id and c.claim_id != claim_id
+            if getattr(c, 'employer_id', '') == employer_id and c.claim_id != claim_id
         ]
         same_provider_claims = [
             c for c in data_ctx.supplemental_claims
             if c.provider_id == claim.provider_id and c.claim_id != claim_id
         ]
+        traveler_claims = []
     else:
         same_employer_claims = []
         same_provider_claims = []
+        traveler_claims = []
 
     # Pre-compute formatted values to avoid f-string ternary+format conflicts
     claim_amount_str = f"${claim.claim_amount:,.2f}" if claim else "$0.00"
-    coverage_str = f"${policy.coverage_amount:,.2f}" if policy and policy.coverage_amount else "$0.00"
-    employer_total = sum(c.claim_amount for c in same_employer_claims)
-    provider_total = sum(c.claim_amount for c in same_provider_claims)
+    coverage_str = f"${policy.coverage_amount:,.2f}" if policy and getattr(policy, 'coverage_amount', None) else "$0.00"
+    employer_total = sum(getattr(c, 'claim_amount', 0) for c in same_employer_claims)
+    provider_total = sum(getattr(c, 'claim_amount', 0) for c in same_provider_claims)
+    subject_name = getattr(member, 'full_name', None) or case.subject_name
+    service_date = getattr(claim, 'date_of_service', None) or getattr(claim, 'date_of_incident', 'N/A') if claim else 'N/A'
+    employer_name = getattr(employer, 'name', None) or (getattr(claim, 'destination_id', '') if claim else 'N/A')
+    employer_state = getattr(employer, 'state', None) or ('Travel' if DOMAIN_MODE == 'travel' else 'N/A')
+    provider_specialty = getattr(provider, 'specialty', getattr(provider, 'provider_type', 'N/A')) if provider else 'N/A'
+    provider_is_mill = getattr(provider, 'is_mill', getattr(provider, 'on_watchlist', False)) if provider else False
+    plan_type = getattr(policy, 'plan_type', getattr(policy, 'plan_type', 'N/A')) if policy else 'N/A'
+    policy_status = getattr(policy, 'status', 'N/A') if policy else 'N/A'
+    policy_effective = getattr(policy, 'effective_date', getattr(policy, 'purchase_date', 'N/A')) if policy else 'N/A'
+    policy_owner_change = getattr(policy, 'owner_change_date', 'None') if policy else 'None'
+    policy_ben_change = getattr(policy, 'beneficiary_change_date', 'None') if policy else 'None'
+    susp_banner = getattr(member, 'suspicious_banner', getattr(claim, 'fraud_scenario', None)) if member else False
 
+    if DOMAIN_MODE == "travel":
+        traveler_history_lines = chr(10).join(
+            f'  - {c.claim_id}: {c.claim_type}, ${c.claim_amount:,.2f}, filed {c.date_filed}'
+            for c in traveler_claims[:10]
+        ) or '  No prior travel claims'
+        extra_context = f"""
+DESTINATION: {getattr(claim, 'destination_id', 'N/A') if claim else 'N/A'}
+INCIDENT DATE: {service_date}
+CANCELLATION REASON: {getattr(claim, 'cancellation_reason', '') if claim else ''}
+MEDICAL DIAGNOSIS: {getattr(claim, 'medical_diagnosis', '') if claim else ''}
+DELAY HOURS: {getattr(claim, 'delay_hours', '') if claim else ''}
+TRAVELER CLAIM HISTORY ({len(traveler_claims)} prior): 
+{traveler_history_lines}
+"""
+    else:
+        extra_context = f"""
+SUSPICIOUS BANNER: {susp_banner}
+ENROLLED DEPENDENTS: {len(deps)}
+{chr(10).join(f'  - {d.first_name} {d.last_name} ({d.relationship}, DOB: {d.dob})' for d in deps[:20])}
+{"  ... and " + str(len(deps) - 20) + " more" if len(deps) > 20 else ""}
+MEMBER CLAIMS HISTORY ({len(member_claims)} total):
+{chr(10).join(f'  - {c.claim_id}: {c.claim_type}, ${c.claim_amount:,.2f}, filed {c.date_filed}' for c in member_claims[:10]) if member_claims else '  No prior claims'}
+SAME-EMPLOYER CLAIMS (excluding this one): {len(same_employer_claims)} claims, total ${employer_total:,.2f}
+"""
+
+    analyst_entity = "Zurich Travel Guard SIU" if DOMAIN_MODE == "travel" else "Prudential Supplemental Health SIU"
     # Build structured context for the LLM
     context_block = f"""
 CLAIM: {claim_id}
-Member: {member.full_name if member else 'Unknown'} ({claim.member_id if claim else 'N/A'})
-Employer: {employer.name if employer else 'Unknown'} | State: {employer.state if employer else 'N/A'}
+Subject: {subject_name} (ID: {subject_id})
+Org/Destination: {employer_name} | Region: {employer_state}
 Claim Type: {claim.claim_type if claim else 'N/A'} | Claim Amount: {claim_amount_str}
-Date of Service: {claim.date_of_service if claim else 'N/A'} | Date Filed: {claim.date_filed if claim else 'N/A'}
+Service/Incident Date: {service_date} | Date Filed: {claim.date_filed if claim else 'N/A'}
 Claim Source: {claim.claim_source if claim else 'N/A'}
-Provider: {provider.name if provider else 'Unknown'} ({claim.provider_id if claim else 'N/A'}) | Specialty: {provider.specialty if provider else 'N/A'} | Is Mill: {provider.is_mill if provider else False}
-Policy: {policy.policy_id if policy else 'N/A'} | Plan Type: {policy.plan_type if policy else 'N/A'} | Coverage: {coverage_str} | Status: {policy.status if policy else 'N/A'}
-Policy Effective: {policy.effective_date if policy else 'N/A'} | Owner Change: {policy.owner_change_date if policy else 'None'} | Beneficiary Change: {policy.beneficiary_change_date if policy else 'None'}
-Suspicious Banner: {member.suspicious_banner if member else False}
+Provider: {provider.name if provider else 'Unknown'} ({claim.provider_id if claim else 'N/A'}) | Type: {provider_specialty} | Watchlist/Mill: {provider_is_mill}
+Policy: {policy.policy_id if policy else 'N/A'} | Plan Type: {plan_type} | Coverage: {coverage_str} | Status: {policy_status}
+Policy Start: {policy_effective} | Owner Change: {policy_owner_change} | Beneficiary Change: {policy_ben_change}
 
 RISK: {risk.total_score if risk else 0}/100 ({risk.tier if risk else 'N/A'})
 Top Risk Factors: {'; '.join(risk.top_factors[:5]) if risk and risk.top_factors else 'None'}
 Rules Boost: {risk.rules_boost if risk else 0}
-
-ENROLLED DEPENDENTS: {len(deps)}
-{chr(10).join(f'  - {d.first_name} {d.last_name} ({d.relationship}, DOB: {d.dob})' for d in deps[:20])}
-{"  ... and " + str(len(deps) - 20) + " more" if len(deps) > 20 else ""}
-
+{extra_context}
 RULES TRIGGERED ({len(triggered_rules)}):
 {chr(10).join(f'  [{r.rule_id}] {r.severity} — {r.rule_name}: {r.explanation}' for r in triggered_rules) if triggered_rules else '  None'}
 
 DOCUMENT ANALYSIS FAILURES ({len(failed_docs)}):
 {chr(10).join(f'  [{d.check_id}] {d.severity} — {d.check_name}: {d.explanation}' for d in failed_docs) if failed_docs else '  All document checks passed'}
 
-MEMBER CLAIMS HISTORY ({len(member_claims)} total):
-{chr(10).join(f'  - {c.claim_id}: {c.claim_type}, ${c.claim_amount:,.2f}, filed {c.date_filed}, status: {c.status}' for c in member_claims[:10]) if member_claims else '  No prior claims'}
-
-SAME-EMPLOYER CLAIMS (excluding this one): {len(same_employer_claims)} claims, total ${employer_total:,.2f}
 SAME-PROVIDER CLAIMS (excluding this one): {len(same_provider_claims)} claims, total ${provider_total:,.2f}
 
 WORKFLOW TASKS ({len(tasks)}):
 {chr(10).join(f'  - {t.task_type}: {t.status}' + (f' ({t.days_waiting}d waiting)' if t.days_waiting else '') for t in tasks) if tasks else '  No tasks'}
 """
 
-    dossier_prompt = f"""You are a Senior Special Investigations Unit (SIU) analyst at Prudential Insurance writing a formal claim investigation dossier. Write a comprehensive, professional escalation report in Markdown.
+    dossier_prompt = f"""You are a Senior Special Investigations Unit (SIU) analyst at {analyst_entity} writing a formal claim investigation dossier. Write a comprehensive, professional escalation report in Markdown.
 
 Use ONLY the factual data provided below. Do not invent numbers. Write with clarity, precision, and the authority of an experienced fraud investigator. Each section should tell the story of what the data shows.
 
@@ -551,13 +677,13 @@ One of: APPROVE / PEND / DENY / ESCALATE TO SIU. Provide a direct, justified rec
 Bullet list of the key evidence points — written in a format suitable for legal review or prosecutor referral.
 
 ---
-*Generated {datetime.now().strftime('%Y-%m-%d %H:%M')} · Prudential Supplemental Health SIU · ARIA Examiner Workflow Copilot*
+*Generated {datetime.now().strftime('%Y-%m-%d %H:%M')} · {analyst_entity} · ARIA Examiner Workflow Copilot*
 """
 
     try:
         from agents.nodes import get_bedrock_llm
         from langchain_core.messages import HumanMessage
-        llm = get_bedrock_llm(temperature=0.05, max_tokens=8000, agent_name="dossier")
+        llm = get_bedrock_llm(temperature=0.05, max_tokens=4096, agent_name="dossier")
         result = await asyncio.to_thread(llm.invoke, [HumanMessage(content=dossier_prompt)])
         dossier_text = result.content if isinstance(result.content, str) else str(result.content)
     except Exception as e:
@@ -618,7 +744,8 @@ async def chat_websocket(websocket: WebSocket, claim_id: str):
             # ── Progressive checklist runner ─────────────────────────────
             if data.get("action") == "run_checklist":
                 # Run vision analysis before checklist so Step 5 uses real image inspection
-                checklist_ctx = await asyncio.to_thread(_build_checklist_ctx, claim_id)
+                _ctx_builder = _build_travel_checklist_ctx if DOMAIN_MODE == "travel" else _build_checklist_ctx
+                checklist_ctx = await asyncio.to_thread(_ctx_builder, claim_id)
                 # Send initial checklist skeleton
                 steps_skeleton = [
                     {"step_number": sn, "step_name": sname,
@@ -777,12 +904,20 @@ def _patch_loggers(ws: WebSocket, loop: asyncio.AbstractEventLoop):
     import agents.nodes as nodes_mod
     tinv = None
     tdos = None
+    # Patch the tool modules that are actually in use for this domain so their
+    # tool:* log lines are captured to the single per-run file.
+    if DOMAIN_MODE == "travel":
+        _inv_name, _dos_name = "agents.tools_investigation_travel", "agents.tools_dossier_travel"
+    else:
+        _inv_name, _dos_name = "agents.tools_investigation", "agents.tools_dossier"
     try:
-        import agents.tools_investigation as tinv
+        import importlib
+        tinv = importlib.import_module(_inv_name)
     except ImportError:
         pass
     try:
-        import agents.tools_dossier as tdos
+        import importlib
+        tdos = importlib.import_module(_dos_name)
     except ImportError:
         pass
 
@@ -833,7 +968,11 @@ def _unpatch_loggers():
 def _build_investigation_query(claim_id: str, case, checklist_context: dict = None) -> str:
     """Build a focused initial query for the 3-agent orchestration scoped to one claim."""
     claim = data_ctx.get_claim(claim_id) if data_ctx else None
-    member = data_ctx.get_member(claim.member_id) if claim else None
+    # TravelClaim uses traveler_id; supplemental health uses member_id
+    member_id = getattr(claim, 'member_id', None) if claim else None
+    traveler_id = getattr(claim, 'traveler_id', None) if claim else None
+    subject_id = member_id or traveler_id
+    member = data_ctx.get_member(member_id) if member_id else None
     risk = data_ctx.claim_risk_scores.get(claim_id) if data_ctx else None
     rules = data_ctx.claim_rules.get(claim_id, []) if data_ctx else []
     doc_results = data_ctx.claim_doc_results.get(claim_id, []) if data_ctx else []
@@ -849,8 +988,10 @@ def _build_investigation_query(claim_id: str, case, checklist_context: dict = No
     ]
     if claim:
         lines.append(f"Claim amount: ${claim.claim_amount:,.2f}")
-        lines.append(f"Provider: {claim.provider_id}")
-        lines.append(f"Member: {claim.member_id}")
+        lines.append(f"Provider: {getattr(claim, 'provider_id', 'N/A')}")
+        if subject_id:
+            label = "Traveler" if traveler_id else "Member"
+            lines.append(f"{label}: {subject_id}")
     if risk:
         lines.append(f"Risk tier: {risk.tier}")
         if risk.top_factors:
@@ -863,7 +1004,7 @@ def _build_investigation_query(claim_id: str, case, checklist_context: dict = No
         lines.append(f"Document check failures ({len(failed_docs)}):")
         for d in failed_docs[:5]:
             lines.append(f"  [{d.severity}] {d.check_name}: {d.explanation}")
-    if member and member.suspicious_banner:
+    if member and getattr(member, 'suspicious_banner', False):
         lines.append("⚠ SUSPICIOUS BANNER ACTIVE on member")
 
     if checklist_context and checklist_context.get("steps"):

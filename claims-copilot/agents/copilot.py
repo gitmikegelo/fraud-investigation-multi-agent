@@ -33,7 +33,13 @@ def get_or_create_session(case_id: str, case_type: str, subject_id: str = None,
             flag_reason=flag_reason,
         )
 
-        from agents.prompts_supplemental import SUPPLEMENTAL_COPILOT_PROMPT
+        from main import DOMAIN_MODE
+        if DOMAIN_MODE == "travel":
+            from agents.prompts_travel import TRAVEL_COPILOT_PROMPT
+            copilot_prompt = TRAVEL_COPILOT_PROMPT
+        else:
+            from agents.prompts_supplemental import SUPPLEMENTAL_COPILOT_PROMPT
+            copilot_prompt = SUPPLEMENTAL_COPILOT_PROMPT
         context = f"""Currently reviewing claim:
 - Claim ID: {case_id}
 - Claimant: {subject_name} (ID: {subject_id})
@@ -42,15 +48,20 @@ def get_or_create_session(case_id: str, case_type: str, subject_id: str = None,
 
 When asked about 'this claim', refer to {case_id} for {subject_name}.
 """
-        system_prompt = context + SUPPLEMENTAL_COPILOT_PROMPT
+        system_prompt = context + copilot_prompt
         session.messages = [SystemMessage(content=system_prompt)]
         _sessions[case_id] = session
     return _sessions[case_id]
 
 
 def get_tools_for_case_type(case_type: str) -> List:
-    from agents.tools_supplemental import ALL_SUPPLEMENTAL_TOOLS
-    return ALL_SUPPLEMENTAL_TOOLS
+    from main import DOMAIN_MODE
+    if DOMAIN_MODE == "travel":
+        from agents.tools_travel import ALL_TRAVEL_TOOLS
+        return ALL_TRAVEL_TOOLS
+    else:
+        from agents.tools_supplemental import ALL_SUPPLEMENTAL_TOOLS
+        return ALL_SUPPLEMENTAL_TOOLS
 
 
 def handle_analyst_message_sync(case_id: str, case_type: str, analyst_message: str,

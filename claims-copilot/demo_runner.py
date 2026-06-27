@@ -1,19 +1,19 @@
 """
-Deterministic Demo Runner for Prudential Supplemental Health Investigation
-==========================================================================
-Replays a fixed dependent fraud ring scenario over WebSocket.
+Deterministic Demo Runner for Zurich Travel Guard Investigation
+===============================================================
+Replays a fixed baggage-padding fraud scenario over WebSocket.
 No LLM / Bedrock calls are made.
 
-Scenario
---------
+Scenario (claim BL-303 — Donna Walker / TRV-0003, baggage_loss)
+---------------------------------------------------------------
 1.  Orchestrator routes to Investigation (Phase: investigate)
-2.  Investigation scans entities, profiles MBR-1042 cluster
+2.  Investigation scans entities, profiles traveler TRV-0003
 3.  Orchestrator routes to Dossier (Phase: compile)
-4.  Dossier REJECTS — insufficient evidence (missing network analysis)
-5.  Investigation traces dependent ring connections
+4.  Dossier REJECTS — insufficient evidence (missing photo/document forensics)
+5.  Investigation reviews the luggage-photo vision findings
 6.  Orchestrator routes to Dossier (Phase: compile)
 7.  Dossier REJECTS AGAIN — missing regulatory citations
-8.  Investigation gathers regulatory rules + peer comparisons
+8.  Investigation gathers TG regulatory rules + peer comparison
 9.  Orchestrator routes to Dossier (Phase: compile)
 10. Dossier ACCEPTS — evidence sufficient → produces final dossier
 """
@@ -23,10 +23,10 @@ import time
 import os
 from datetime import datetime
 
-DEMO_FINAL_DOSSIER = r"""# SUPPLEMENTAL HEALTH FRAUD INVESTIGATION DOSSIER
+DEMO_FINAL_DOSSIER = r"""# TRAVEL INSURANCE FRAUD INVESTIGATION DOSSIER
 
-**Hypothesis**: Coordinated dependent fraud ring filing fabricated accident and hospital indemnity claims through shared provider
-**Case Type**: Dependent Fraud / Provider Mill
+**Hypothesis**: Baggage value-padding with staged damage — luxury-item baggage_loss claim 6.6x peer average, exceeding policy limit, supported by a manipulated luggage photo
+**Case Type**: Baggage Padding / Value Inflation
 **Generated**: {date}
 **Status**: Evidence Sufficient - Ready for Action
 
@@ -34,114 +34,91 @@ DEMO_FINAL_DOSSIER = r"""# SUPPLEMENTAL HEALTH FRAUD INVESTIGATION DOSSIER
 
 ## EXECUTIVE SUMMARY
 
-Investigation identified a suspected dependent fraud ring involving 4 members centered around MBR-1042, sharing address ADDR-2201 and routing claims through PRV-087 (Dr. Ramon Espinoza, Urgent Care). The ring filed 23 accident and hospital indemnity claims totaling **$187,450** within an 8-week window, predominantly for dependents (DEP-3042, DEP-3043, DEP-3044). Risk scores range from 72 to 89. 8 independent evidence points with quantitative significance and regulatory basis established.
+Investigation identified suspected **baggage value-padding** on claim **BL-303** filed by traveler **TRV-0003 (Donna Walker)**. The $15,200 baggage_loss claim is **6.6x the peer average** ($2,312) and **exceeds the $2,500 policy baggage limit by $12,700 (508%)**. The submitted luggage photo shows **staged, deliberately created damage** (vision check DOC-002, CRITICAL), and the claimant's identity could not be confirmed from the baggage tag (DOC-005). The traveler is a **serial claimer** with 6 claims on file. Risk score **99.0 (HIGH)**. 8 independent evidence points with quantitative and regulatory basis established.
 
 ---
 
 ## ENTITIES INVOLVED
 
-### Entity 1: MBR-1042 (Jacob Taylor)
-- **Type**: Member (Primary Subject)
-- **Risk Score**: 89
-- **Employer**: EMP-015 (Meridian Logistics Corp)
-- **Total Claims**: $78,200 (12 claims)
-- **Dependents**: 3 (DEP-3042, DEP-3043, DEP-3044)
-- **Address**: ADDR-2201
+### Entity 1: TRV-0003 (Donna Walker)
+- **Type**: Traveler (Primary Subject)
+- **Risk Score**: 99
+- **Total Claims**: 6 (serial claimer — threshold 3)
+- **Current Claim**: BL-303 — $15,200.00 baggage_loss
+- **Loyalty Tier**: standard
 
-### Entity 2: MBR-1038 (Sarah Chen)
-- **Type**: Member (Ring Member)
-- **Risk Score**: 76
-- **Total Claims**: $42,600 (6 claims)
-- **Address**: ADDR-2201 (same as MBR-1042)
-
-### Entity 3: PRV-087 (Dr. Ramon Espinoza)
-- **Type**: Provider (Suspected Mill)
-- **Specialty**: Urgent Care
-- **Total Claims Processed**: 89 claims / quarter
-- **Unique Members**: 8 (top member MBR-1042 at 34%)
-- **Avg Claim Amount**: $4,250 (peer avg: $1,800)
-
-### Entity 4: DEP-3042 (Emma Taylor)
-- **Type**: Dependent (Minor)
-- **Claims Filed**: 5 accident claims in 6 weeks
-- **Total Amount**: $28,750
-
-### Entity 5: DEP-3043 (Liam Taylor)
-- **Type**: Dependent (Minor)
-- **Claims Filed**: 4 hospital indemnity claims in 5 weeks
-- **Total Amount**: $22,400
+### Entity 2: BL-303 (Claim)
+- **Type**: Baggage Loss Claim
+- **Amount**: $15,200.00 (6.6x peer average of $2,312.40)
+- **Policy Limit**: $2,500.00 — exceeded by $12,700.00 (508%)
+- **Items**: Rolex Submariner, Louis Vuitton carry-on, MacBook Pro 16", Bose headphones, Prada sunglasses, cashmere sweater, gold jewelry — no purchase receipts
 
 ---
 
 ## EVIDENCE
 
-1. MBR-1042 risk score 89 — 3.4 standard deviations above employer peer average for claim frequency
-2. Cluster of 4 members at shared address ADDR-2201 filing through same provider PRV-087
-3. 23 claims in 8-week window vs peer average of 1.2 claims/quarter (z-score: 4.8)
-4. Dependent claim ratio 78% — DEP-3042/3043/3044 account for majority of filed claims
-5. PRV-087 member concentration: 34% of volume from single member vs expected < 5%
-6. Temporal clustering: 85% of claims filed Mon-Wed, suggesting coordinated submission
-7. Network density 4.2 among ring members at ADDR-2201 — highly interconnected
-8. Document inconsistencies: 3 claims show mismatched service dates between provider notes and facility records
+1. BL-303 risk score 99.0 — highest in the active queue, 3 rules triggered (R-004, R-007, R-011)
+2. Claim amount $15,200 is 6.6x the baggage_loss peer average of $2,312 (z-score 5.09)
+3. Claim exceeds the $2,500 policy baggage coverage limit by $12,700 (508% over)
+4. Luggage photo vision review [DOC-002 CRITICAL]: concentrated jagged hole appears deliberately created, inconsistent with carousel/transport damage
+5. [DOC-005 WARNING]: baggage tag illegible — claimant identity (Donna Walker) cannot be confirmed; routing LHR→JFK visible but ownership unverified
+6. All claimed items are high-value luxury goods (Rolex, LV, MacBook) with NO purchase receipts provided
+7. Traveler TRV-0003 is a serial claimer — 6 claims on file vs peer norm (z-score elevated)
+8. R-011 BLOCK: photo evidence held for forensic image review (staged-damage / value-padding risk)
 
 ---
 
-## NETWORK ANALYSIS
+## DOCUMENT & PHOTO FORENSICS
 
-- **Connected Entities**: 9
-- **Connection Density**: 4.2
-- **Ring Members**: MBR-1042, MBR-1038, MBR-1055, MBR-1061
-- **Shared Address**: ADDR-2201 (1847 Oakmont Dr, Unit B)
-- **Common Provider**: PRV-087 (Dr. Ramon Espinoza)
-- **Relationship Map**: MBR-1042 → DEPENDENT_OF → DEP-3042/3043/3044; MBR-1042 → LIVES_AT → ADDR-2201; MBR-1038 → LIVES_AT → ADDR-2201; all → TREATED_BY → PRV-087
+- **Evidence image**: images/bl303.png (damaged-luggage photo)
+- **DOC-002 (CRITICAL)** Staged or Inconsistent Damage — large jagged hole concentrated in one localized area; deliberate-appearing rather than transport damage
+- **DOC-005 (WARNING)** Missing Identifying Detail — baggage tag not legible enough to confirm claimant identity
+- **Vision assessment**: significant red flags regarding damage authenticity; damage pattern suggests potential claim fraud
 
 ---
 
 ## REGULATORY VIOLATIONS
 
-### SH-001: Dependent Eligibility Verification
-Multiple dependents filing high-frequency claims without independent verification of dependent status. DEP-3042/3043/3044 eligibility documentation incomplete.
+### TG-004: Baggage Valuation — Outlier and Receipt Verification
+Claim is 6.6x the peer average, comprises exclusively luxury items with no receipts, and exceeds the policy baggage limit. Submitted photo shows staged/inconsistent damage.
 
-### SH-003: Provider Volume Threshold Exceeded
-PRV-087 exceeds 75th percentile for claim volume with single-source member concentration > 25%. Pattern consistent with provider mill arrangement.
+### TG-007: Serial Claimer — Benefit Harvesting
+Traveler TRV-0003 has 6 claims on file (threshold 3), indicating a benefit-harvesting pattern.
 
-### SH-004: Document Integrity — Temporal Mismatch
-3 claims show service date discrepancies between provider notes and facility admission records. Indicates potential document fabrication.
-
-### SH-010: Shared Address Cluster
-4 members sharing ADDR-2201 with correlated claim timing. Exceeds threshold of 3+ members at same address with concurrent claims.
+### TG-009: Document & Evidence Integrity
+The luggage photo shows manipulated/staged damage and the baggage tag cannot substantiate ownership — fails evidence-integrity checks.
 
 ---
 
 ## PRECEDENT CASES
 
-- **SIU-2025-0847**: Dependent Ring — 6 members, shared address, 34 fabricated accident claims, $245K denied. Provider contract terminated.
-- **SIU-2024-1203**: Provider Mill — Urgent care facility, 78% single-source referrals, $890K in fraudulent billing. License revoked, $620K recovered.
+- **SIU-TG-2025-0207**: Baggage Padding — luxury-item claim 6x peer average, no receipts, staged damage photo. Claim reduced to documented items, $11K prevented.
+- **SIU-TG-2025-0064**: Serial Claimer — 8 claims in 14 months, frequency 4.8σ above peers. Policy non-renewed, $47K under recovery review.
 
 ---
 
 ## FINANCIAL IMPACT
 
-- **Total Claims Filed**: $187,450.00
-- **Gross Exposure**: $187,450.00
-- **Collectability Factor**: 85%
-- **Litigation Discount**: 80%
-- **Net Expected Recovery**: **$127,466.00**
-- **Recommended Action**: DENY CLAIMS — Fabricated dependent claims through coordinated ring
+- **Total Claimed (BL-303)**: $15,200.00
+- **Amount Within Policy Limit**: $2,500.00
+- **Excess Over Limit**: $12,700.00
+- **Collectability Factor**: 61%
+- **Net Expected Prevention/Recovery**: **$12,700.00** (deny amount over limit; full denial if fraud substantiated)
+- **Recommended Action**: DENY amount exceeding limit; HOLD pending receipts — escalate for staged-damage fraud
 
 ---
 
 ## RECOMMENDATIONS
 
-1. **DENY** all pending claims from MBR-1042, MBR-1038, and associated dependents filed through PRV-087
-2. **REFER TO SIU** for formal investigation of dependent eligibility fraud across ADDR-2201 cluster
-3. **TERMINATE PROVIDER** contract with PRV-087 pending review of billing practices
-4. **FLAG EMPLOYER** EMP-015 for enrollment audit — verify dependent eligibility documentation
-5. **RECOVER** overpayments on 12 previously paid claims totaling $68,400
-6. Report to state Department of Insurance for coordinated fraud scheme
+1. **DENY** the portion of BL-303 exceeding the $2,500 policy baggage limit ($12,700)
+2. **PLACE ON HOLD** pending original purchase receipts and proof of ownership for all luxury items
+3. **REFER TO SIU** for staged-damage fraud — the luggage photo shows deliberately created damage
+4. **REQUEST** legible baggage tag / airline baggage-handling records for flight LHR→JFK (2026-01-25)
+5. **REVIEW** all 6 prior claims by TRV-0003 for similar value-padding patterns
+6. **FLAG** TRV-0003 for enhanced monitoring on future claims
 
 ---
-*Generated by ARIA - Prudential Supplemental Health Investigation Copilot*
+*Generated by ARIA - Zurich Travel Guard Investigation Copilot*
 """
 
 
@@ -151,26 +128,29 @@ def _send(ws, loop, event_type, data):
     time.sleep(0.05)
 
 
-def _log_and_send(ws, loop, agent, message, delay=0.3):
+def _log_and_send(ws, loop, agent, message, delay=0.3, log_path=None):
     _send(ws, loop, "log", {"agent": agent, "message": message})
-    # Write to demo log file
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    logs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
-    os.makedirs(logs_dir, exist_ok=True)
-    log_path = os.path.join(logs_dir, f"investigation_demo_{timestamp}.txt")
-    try:
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"{agent}\n{message}\n")
-    except Exception:
-        pass
+    # Append to the single per-run demo log file (log_path is fixed once per investigation).
+    if log_path:
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"{agent}\n{message}\n")
+        except Exception:
+            pass
     time.sleep(delay)
 
 
 def run_demo_investigation_sync(ws, loop):
-    """Replay a scripted dependent fraud ring investigation. Called from a thread."""
+    """Replay a scripted baggage-padding (BL-303) investigation. Called from a thread."""
+
+    # One log file for the entire run (timestamp computed once, not per line).
+    _run_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    _logs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+    os.makedirs(_logs_dir, exist_ok=True)
+    _run_log_path = os.path.join(_logs_dir, f"investigation_demo_{_run_timestamp}.txt")
 
     s = lambda et, d: _send(ws, loop, et, d)
-    log = lambda a, m, delay=0.3: _log_and_send(ws, loop, a, m, delay)
+    log = lambda a, m, delay=0.3: _log_and_send(ws, loop, a, m, delay, log_path=_run_log_path)
 
     s("status", {"message": "Investigation starting (demo mode)..."})
     time.sleep(0.5)
@@ -190,31 +170,27 @@ def run_demo_investigation_sync(ws, loop):
     log("Investigation", "Starting investigation sub-agent (7 tools available)...")
     log("Investigation", "Invoking LLM + tool loop...")
 
-    log("tool", "tool:scan_suspicious_entities -> Scanning entities (risk > 40)...")
+    log("tool", "tool:scan_suspicious_entities -> Scanning case queue (risk > 40)...")
     time.sleep(1.0)
-    log("tool", "tool:scan_suspicious_entities -> Found 6 high-risk entities (0.3s)")
+    log("tool", "tool:scan_suspicious_entities -> Found 7 high-risk entities; top: BL-303 (99.0), BL-040 (93.6) (0.3s)")
 
-    log("tool", "tool:profile_entity -> Profiling MBR-1042 (Jacob Taylor)...")
+    log("tool", "tool:profile_entity -> Profiling TRV-0003 (Donna Walker)...")
     time.sleep(0.8)
-    log("tool", "tool:profile_entity -> Risk: 89, 12 claims, $78.2K total, 3 dependents, employer EMP-015")
+    log("tool", "tool:profile_entity -> Traveler, 6 claims, current claim BL-303 $15.2K baggage_loss, loyalty=standard")
 
-    log("tool", "tool:profile_entity -> Profiling PRV-087 (Dr. Ramon Espinoza)...")
-    time.sleep(0.6)
-    log("tool", "tool:profile_entity -> 89 claims/qtr, 8 unique members, top member MBR-1042 at 34%")
-
-    log("tool", "tool:get_claim_details -> Fetching claims for MBR-1042...")
+    log("tool", "tool:get_claim_details -> Fetching claim BL-303...")
     time.sleep(0.5)
-    log("tool", "tool:get_claim_details -> 12 claims returned — 9 accident, 3 hospital indemnity, avg $6,517")
+    log("tool", "tool:get_claim_details -> baggage_loss $15,200; 7 luxury items, no receipts; rules R-004, R-007, R-011")
 
-    log("tool", "tool:compare_to_peers -> Comparing MBR-1042 claim_count vs EMP-015 peers...")
+    log("tool", "tool:compare_to_peers -> Comparing TRV-0003 baggage_value vs traveler peers...")
     time.sleep(0.5)
-    log("tool", "tool:compare_to_peers -> Value: 12, peer_avg: 2.1, z-score: 3.4")
+    log("tool", "tool:compare_to_peers -> Value: $15,200, peer_avg: $2,312, z-score: 5.09")
 
-    log("Investigation", "Sub-agent finished in 8.2s | Tool calls made: 5")
-    log("Investigation", "Summary: Identified high-risk member MBR-1042 with elevated claim frequency and dependent claim concentration through PRV-087...")
+    log("Investigation", "Sub-agent finished in 8.2s | Tool calls made: 4")
+    log("Investigation", "Summary: BL-303 is an extreme baggage_loss outlier (6.6x peer avg) by serial claimer TRV-0003...")
 
     s("node_exit", {"node": "investigation", "elapsed": 10.0,
-       "findings_preview": "MBR-1042 risk score 89, 12 claims ($78.2K), 3 dependents filing through PRV-087 (34% member concentration). Claim frequency z-score 3.4 vs employer peers..."})
+       "findings_preview": "BL-303 risk 99.0, $15,200 baggage_loss (6.6x peer avg, z=5.09), 7 luxury items no receipts, traveler TRV-0003 has 6 claims. Exceeds $2,500 policy limit..."})
 
     # ===== ITERATION 3: Orchestrator → Dossier =====
     s("node_enter", {"node": "orchestrator", "iteration": 3})
@@ -228,34 +204,34 @@ def run_demo_investigation_sync(ws, loop):
     log("Dossier", "Starting dossier sub-agent (5 tools available)...")
     log("Dossier", "Invoking LLM + tool loop (evidence assessment)...")
 
-    log("tool", "tool:assess_evidence -> Assessing 'dependent_ring' (3 evidence points)...")
+    log("tool", "tool:assess_evidence -> Assessing 'baggage_padding' (3 evidence points)...")
     time.sleep(0.8)
     log("tool", "tool:assess_evidence -> INSUFFICIENT (2 passed, 2 failed)")
-    log("tool", "tool:assess_evidence -> Missing: network_evidence, document_evidence")
+    log("tool", "tool:assess_evidence -> Missing: document_evidence, regulatory_citation")
 
     log("Dossier", "Evidence assessed as INSUFFICIENT - looping back to investigation")
     s("dossier_rejected", {
-        "message": "Dossier rejected \u2014 evidence INSUFFICIENT. 2 of 6 critical checks failed.",
-        "evidence_gaps": """CASE WRITER DENIAL NOTE \u2014 Iteration 1
+        "message": "Dossier rejected — evidence INSUFFICIENT. 2 of 6 critical checks failed.",
+        "evidence_gaps": """CASE WRITER DENIAL NOTE — Iteration 1
 ======================================
 
-CLAIM: Dependent fraud ring involving MBR-1042 (Jacob Taylor)
-ASSESSMENT: INSUFFICIENT \u2014 Cannot proceed to formal dossier
+CLAIM: Baggage padding on BL-303 — TRV-0003 (Donna Walker)
+ASSESSMENT: INSUFFICIENT — Cannot proceed to formal dossier
 
 FINDINGS SO FAR:
-\u2022 Member MBR-1042 flagged with risk score 89 (3.4\u03c3 above employer peer group)
-\u2022 12 claims totaling $78,200 through single provider PRV-087
-\u2022 3 dependents (DEP-3042, DEP-3043, DEP-3044) account for 78% of claim volume
-\u2022 Provider PRV-087 shows 34% member concentration (expected < 5%)
+• BL-303 risk score 99.0 — highest in the active queue
+• $15,200 baggage_loss claim = 6.6x peer average ($2,312), z-score 5.09
+• 7 luxury items (Rolex, Louis Vuitton, MacBook) with no purchase receipts
+• Claim exceeds the $2,500 policy baggage limit by $12,700
 
 DEFICIENCIES:
-1. NETWORK ANALYSIS (CRITICAL): No graph traversal performed to establish shared address connections. Cannot confirm whether MBR-1042, MBR-1038, MBR-1055, MBR-1061 share ADDR-2201 or if the address cluster is coincidental. Without this, the \"coordinated ring\" hypothesis is unsupported.
-   \u2192 Action: Run find_connections(MBR-1042, depth=2) and find_ring(min_risk_score=50)
+1. PHOTO/DOCUMENT FORENSICS (CRITICAL): A damaged-luggage photo was submitted but the forensic vision findings have not been reviewed. Cannot confirm whether the damage is genuine or staged. Without this, the "value-padding with staged damage" hypothesis is unsupported.
+   → Action: Review the BL-303 evidence-image vision checks (DOC-002 staged damage, DOC-005 identity).
 
-2. DOCUMENT INTEGRITY (CRITICAL): No document-level checks performed. Claims may have service date mismatches between provider notes and facility records. Document tampering indicators have not been examined.
-   \u2192 Action: Run get_claim_details(MBR-1042) with document flag analysis
+2. REGULATORY CITATION (REQUIRED): No travel-insurance rules have been cited. A formal dossier requires specific TG rule references to support the denial recommendation.
+   → Action: Run search_regulatory_rules(['baggage_loss'], 'baggage padding luxury no receipts staged photo').
 
-NEXT STEPS: Investigation agent must gather network topology and document evidence before re-submission."""
+NEXT STEPS: Investigation agent must review the photo forensics and gather regulatory basis before re-submission."""
     })
     s("node_exit", {"node": "dossier", "elapsed": 14.0, "evidence_sufficient": False})
 
@@ -267,30 +243,27 @@ NEXT STEPS: Investigation agent must gather network topology and document eviden
     s("phase_change", {"phase": "investigate", "loop_count": 3})
     s("node_exit", {"node": "orchestrator", "elapsed": 15.5, "phase": "investigate", "loop_count": 3})
 
-    # ===== ITERATION 6: Investigation — network + ring analysis =====
+    # ===== ITERATION 6: Investigation — photo forensics =====
     s("node_enter", {"node": "investigation", "iteration": 6})
     log("Investigation", "Starting investigation sub-agent (addressing evidence gaps)...")
-    log("Investigation", "Evidence gaps: need network analysis + document integrity checks")
+    log("Investigation", "Evidence gaps: need photo/document forensics on the luggage image")
 
-    log("tool", "tool:find_connections -> Traversing graph from MBR-1042 (depth=2)...")
+    log("tool", "tool:get_claim_details -> Reviewing BL-303 evidence-image vision checks...")
     time.sleep(1.0)
-    log("tool", "tool:find_connections -> 9 connected entities, density=4.2, shared address ADDR-2201")
+    log("tool", "tool:get_claim_details -> DOC-002 CRITICAL: jagged hole appears deliberately created, inconsistent with transport damage")
+    log("tool", "tool:get_claim_details -> DOC-005 WARNING: baggage tag illegible — claimant identity unconfirmed (routing LHR→JFK)")
 
-    log("tool", "tool:find_ring -> Searching detected patterns (risk >= 50)...")
-    time.sleep(1.2)
-    log("tool", "tool:find_ring -> Found dependent_ring: 4 members at ADDR-2201, avg risk 78.5")
+    log("tool", "tool:find_ring -> Checking for related baggage/value-padding patterns (risk >= 50)...")
+    time.sleep(0.9)
+    log("tool", "tool:find_ring -> No coordinated ring; isolated high-value claimant TRV-0003")
 
-    log("tool", "tool:compare_to_peers -> Comparing MBR-1042 dependent_claims vs peers...")
-    time.sleep(0.6)
-    log("tool", "tool:compare_to_peers -> Value: 9, peer_avg: 0.8, z-score: 4.8")
-
-    log("tool", "tool:get_referral_history -> Pulling 6-month history for PRV-087...")
+    log("tool", "tool:compare_to_peers -> Comparing TRV-0003 claim_count vs travelers...")
     time.sleep(0.5)
-    log("tool", "tool:get_referral_history -> 6 months, avg 15 claims/month, MBR-1042 concentration increasing")
+    log("tool", "tool:compare_to_peers -> Value: 6, peer_avg: 1.4, z-score: 3.1 (serial claimer)")
 
-    log("Investigation", "Sub-agent finished in 6.8s | Tool calls made: 4")
+    log("Investigation", "Sub-agent finished in 6.8s | Tool calls made: 3")
     s("node_exit", {"node": "investigation", "elapsed": 23.0,
-       "findings_preview": "Dependent ring confirmed: 4 members at ADDR-2201, density 4.2. Dependent claims z-score 4.8. PRV-087 shows increasing MBR-1042 concentration..."})
+       "findings_preview": "Photo forensics confirm staged damage (DOC-002 CRITICAL); identity unverified (DOC-005). Serial-claimer z-score 3.1. Awaiting TG regulatory citations..."})
 
     # ===== ITERATION 7: Orchestrator → Dossier =====
     s("node_enter", {"node": "orchestrator", "iteration": 7})
@@ -303,35 +276,34 @@ NEXT STEPS: Investigation agent must gather network topology and document eviden
     s("node_enter", {"node": "dossier", "iteration": 8})
     log("Dossier", "Starting dossier sub-agent...")
 
-    log("tool", "tool:assess_evidence -> Assessing 'dependent_ring' (6 evidence points)...")
+    log("tool", "tool:assess_evidence -> Assessing 'baggage_padding' (6 evidence points)...")
     time.sleep(0.8)
     log("tool", "tool:assess_evidence -> INSUFFICIENT (4 passed, 1 failed)")
-    log("tool", "tool:assess_evidence -> Missing: regulatory_citation \u2014 need SH rule references")
+    log("tool", "tool:assess_evidence -> Missing: regulatory_citation — need TG rule references")
 
-    log("Dossier", "Evidence INSUFFICIENT \u2014 missing regulatory citations")
+    log("Dossier", "Evidence INSUFFICIENT — missing regulatory citations")
     s("dossier_rejected", {
-        "message": "Dossier rejected \u2014 still INSUFFICIENT. 1 of 6 critical checks failed.",
-        "evidence_gaps": """CASE WRITER DENIAL NOTE \u2014 Iteration 2
+        "message": "Dossier rejected — still INSUFFICIENT. 1 of 6 critical checks failed.",
+        "evidence_gaps": """CASE WRITER DENIAL NOTE — Iteration 2
 ======================================
 
-CLAIM: Dependent fraud ring involving MBR-1042 (Jacob Taylor)
-ASSESSMENT: INSUFFICIENT \u2014 Strong quantitative case but lacks regulatory grounding
+CLAIM: Baggage padding on BL-303 — TRV-0003 (Donna Walker)
+ASSESSMENT: INSUFFICIENT — Strong quantitative + forensic case but lacks regulatory grounding
 
 EVIDENCE ESTABLISHED (4 of 5 checks passed):
-\u2713 Multiple evidence points: 6 independent data points collected
-\u2713 Statistical significance: Claim frequency z-score 3.4, dependent claims z-score 4.8 (both > 2.0 threshold)
-\u2713 Network evidence: Dependent ring confirmed \u2014 4 members at ADDR-2201, graph density 4.2, all routing through PRV-087
-\u2713 Temporal pattern: 85% of claims filed Mon-Wed within 8-week window, indicating coordinated submission
+✓ Multiple evidence points: 6 independent data points collected
+✓ Statistical significance: baggage value z-score 5.09, serial-claimer z-score 3.1 (both > 2.0)
+✓ Document evidence: luggage photo shows staged damage (DOC-002 CRITICAL), identity unverified (DOC-005)
+✓ Temporal/amount pattern: claim 6.6x peer average, exceeds policy limit by 508%
 
 REMAINING DEFICIENCY:
-1. REGULATORY CITATION (REQUIRED): No supplemental health regulatory rules have been cited. A formal dossier requires specific rule references to support denial recommendations and withstand appeals. The following rules are likely applicable but have not been formally searched:
-   \u2022 SH-001 (Dependent Eligibility Verification) \u2014 DEP-3042/3043/3044 eligibility docs incomplete
-   \u2022 SH-003 (Provider Volume Threshold) \u2014 PRV-087 exceeds 75th percentile with 34% single-source concentration
-   \u2022 SH-010 (Shared Address Cluster) \u2014 4 members at ADDR-2201 with concurrent claims
-   \u2022 SH-004 (Document Integrity) \u2014 Potential service date mismatches in 3 claims
-   \u2192 Action: Run search_regulatory_rules(['accident', 'hospital_indemnity'], 'dependent ring shared address')
+1. REGULATORY CITATION (REQUIRED): No travel-insurance regulatory rules have been cited. A formal dossier requires specific TG rule references to support the denial recommendation and withstand appeals. Likely applicable:
+   • TG-004 (Baggage Valuation — Outlier & Receipt Verification) — 6.6x peer avg, no receipts, over policy limit
+   • TG-007 (Serial Claimer — Benefit Harvesting) — 6 claims on file
+   • TG-009 (Document & Evidence Integrity) — staged-damage photo, unverifiable baggage tag
+   → Action: Run search_regulatory_rules(['baggage_loss'], 'baggage padding luxury no receipts staged photo').
 
-NOTE: Once regulatory basis is established, this case is ready for final dossier compilation with estimated recovery of $127K-$160K."""
+NOTE: Once the regulatory basis is established, this case is ready for final compilation with ~$12.7K over-limit denial."""
     })
     s("node_exit", {"node": "dossier", "elapsed": 27.0, "evidence_sufficient": False})
 
@@ -342,17 +314,17 @@ NOTE: Once regulatory basis is established, this case is ready for final dossier
     s("phase_change", {"phase": "investigate", "loop_count": 5})
     s("node_exit", {"node": "orchestrator", "elapsed": 28.5, "phase": "investigate", "loop_count": 5})
 
-    # ===== ITERATION 10: Investigation — document checks =====
+    # ===== ITERATION 10: Investigation — regulatory basis =====
     s("node_enter", {"node": "investigation", "iteration": 10})
-    log("Investigation", "Gathering document evidence and temporal patterns...")
+    log("Investigation", "Gathering regulatory basis for baggage value-padding...")
 
-    log("tool", "tool:get_claim_details -> Checking document flags for MBR-1042 claims...")
+    log("tool", "tool:get_claim_details -> Confirming BL-303 rule triggers and coverage limit...")
     time.sleep(0.8)
-    log("tool", "tool:get_claim_details -> 3 claims with document anomalies: date mismatches between provider and facility records")
+    log("tool", "tool:get_claim_details -> R-004 (outlier), R-007 (serial), R-011 (photo review BLOCK); limit $2,500 exceeded by $12,700")
 
     log("Investigation", "Sub-agent finished in 2.5s | Tool calls made: 1")
     s("node_exit", {"node": "investigation", "elapsed": 31.5,
-       "findings_preview": "Document integrity issues found: 3 claims with service date mismatches. Combined with network and statistical evidence, regulatory rules SH-001, SH-003, SH-004, SH-010 applicable..."})
+       "findings_preview": "Confirmed rule triggers R-004/R-007/R-011 and $12,700 over-limit. Combined with forensics, TG-004/TG-007/TG-009 applicable..."})
 
     # ===== ITERATION 11: Orchestrator → Dossier (final) =====
     s("node_enter", {"node": "orchestrator", "iteration": 11})
@@ -365,28 +337,28 @@ NOTE: Once regulatory basis is established, this case is ready for final dossier
     s("node_enter", {"node": "dossier", "iteration": 12})
     log("Dossier", "Starting dossier sub-agent...")
 
-    log("tool", "tool:assess_evidence -> Assessing 'dependent_ring' (8 evidence points)...")
+    log("tool", "tool:assess_evidence -> Assessing 'baggage_padding' (8 evidence points)...")
     time.sleep(0.8)
     log("tool", "tool:assess_evidence -> SUFFICIENT (5 passed, 0 failed)")
 
-    log("tool", "tool:search_regulatory_rules -> Searching rules for accident, hospital_indemnity...")
+    log("tool", "tool:search_regulatory_rules -> Searching rules for baggage_loss...")
     time.sleep(0.6)
-    log("tool", "tool:search_regulatory_rules -> Found 4 applicable rules: SH-001, SH-003, SH-004, SH-010")
+    log("tool", "tool:search_regulatory_rules -> Found 3 applicable rules: TG-004, TG-007, TG-009")
 
-    log("tool", "tool:find_similar_cases -> Looking up precedents for dependent_ring...")
+    log("tool", "tool:find_similar_cases -> Looking up precedents for baggage_padding...")
     time.sleep(0.5)
     log("tool", "tool:find_similar_cases -> Found 2 precedent cases")
 
-    log("tool", "tool:estimate_recovery -> Dependent ring: $187K exposure, risk=0.89...")
+    log("tool", "tool:estimate_recovery -> Baggage padding: $15.2K claimed, $2.5K limit...")
     time.sleep(0.5)
-    log("tool", "tool:estimate_recovery -> Gross: $187,450, net recovery: $127,466")
+    log("tool", "tool:estimate_recovery -> Over-limit exposure $12,700; net prevention $12,700")
 
-    log("tool", "tool:compile_dossier -> Generating supplemental health fraud dossier...")
+    log("tool", "tool:compile_dossier -> Generating travel-insurance fraud dossier...")
     time.sleep(1.0)
-    log("tool", "tool:compile_dossier -> Dossier generated (3,412 chars)")
+    log("tool", "tool:compile_dossier -> Dossier generated (3,180 chars)")
 
     log("Dossier", "Evidence assessed as SUFFICIENT")
-    s("dossier_accepted", {"message": "Evidence SUFFICIENT \u2014 dossier compiled."})
+    s("dossier_accepted", {"message": "Evidence SUFFICIENT — dossier compiled."})
     s("node_exit", {"node": "dossier", "elapsed": 38.0, "evidence_sufficient": True})
 
     # ===== Final orchestrator → done =====
@@ -406,7 +378,7 @@ NOTE: Once regulatory basis is established, this case is ready for final dossier
         "evidence_sufficient": True,
         "dossier": dossier_text,
         "findings": {
-            "last_investigation": "Dependent fraud ring confirmed: MBR-1042 cluster, 4 members at ADDR-2201, PRV-087 provider mill. Z-scores: claim frequency 3.4, dependent claims 4.8. Rules: SH-001, SH-003, SH-004, SH-010.",
+            "last_investigation": "Baggage value-padding confirmed: BL-303 (TRV-0003), $15,200 = 6.6x peer avg (z=5.09), exceeds $2,500 policy limit by $12,700, staged-damage photo (DOC-002). Rules: R-004, R-007, R-011 / TG-004, TG-007, TG-009.",
         },
     })
 

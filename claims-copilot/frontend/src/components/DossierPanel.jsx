@@ -128,14 +128,15 @@ export default function DossierPanel({ caseId }) {
         {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16,
-          padding: '16px 20px', borderRadius: 12,
+          padding: '16px 20px', borderRadius: 'var(--r-card)',
           background: 'var(--c-surface)', border: '1px solid var(--c-border)',
+          boxShadow: 'var(--c-shadow-sm)',
         }}>
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <rect x="3" y="2" width="14" height="16" rx="2" stroke="#3b82f6" strokeWidth="1.5" />
-            <line x1="6" y1="6" x2="14" y2="6" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="6" y1="9" x2="14" y2="9" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="6" y1="12" x2="11" y2="12" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />
+            <rect x="3" y="2" width="14" height="16" rx="2" stroke="var(--c-blue)" strokeWidth="1.5" />
+            <line x1="6" y1="6" x2="14" y2="6" stroke="var(--c-blue)" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="6" y1="9" x2="14" y2="9" stroke="var(--c-blue)" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="6" y1="12" x2="11" y2="12" stroke="var(--c-blue)" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
           <div style={{ flex: 1 }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>
@@ -157,12 +158,13 @@ export default function DossierPanel({ caseId }) {
             title="Use Claude to write a comprehensive narrative dossier"
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 8,
-              background: aiGenerating ? 'var(--c-surface2)' : 'rgba(99,102,241,0.85)',
-              color: aiGenerating ? '#6366f1' : '#fff',
-              border: '1px solid rgba(99,102,241,0.3)',
+              fontSize: 11, fontWeight: 600, padding: '7px 16px', borderRadius: 'var(--r-btn)',
+              textTransform: 'uppercase', letterSpacing: '0.04em',
+              background: aiGenerating ? 'var(--c-accent-soft)' : 'linear-gradient(90deg, #a100ff, #d6298a)',
+              color: aiGenerating ? 'var(--c-accent)' : '#fff',
+              border: 'none',
               cursor: aiGenerating ? 'default' : 'pointer',
-              opacity: aiGenerating ? 0.7 : 1, transition: 'all 0.15s',
+              opacity: aiGenerating ? 0.8 : 1, transition: 'all 0.15s',
             }}
           >
             {aiGenerating ? (
@@ -176,9 +178,11 @@ export default function DossierPanel({ caseId }) {
             disabled={generating}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 8,
-              background: generating ? 'var(--c-surface2)' : 'var(--c-accent)',
-              color: '#fff', border: 'none', cursor: generating ? 'default' : 'pointer',
+              fontSize: 11, fontWeight: 600, padding: '7px 16px', borderRadius: 'var(--r-btn)',
+              textTransform: 'uppercase', letterSpacing: '0.04em',
+              background: 'transparent',
+              color: 'var(--c-accent)', border: '1px solid var(--c-accent)',
+              cursor: generating ? 'default' : 'pointer',
               opacity: generating ? 0.6 : 1,
             }}
           >
@@ -200,9 +204,9 @@ export default function DossierPanel({ caseId }) {
         {/* AI generating progress */}
         {aiGenerating && (
           <div style={{
-            marginBottom: 12, padding: '12px 16px', borderRadius: 8,
-            background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)',
-            fontSize: 12, color: '#818cf8', display: 'flex', alignItems: 'center', gap: 8,
+            marginBottom: 12, padding: '12px 16px', borderRadius: 'var(--r-btn)',
+            background: 'var(--c-accent-faint)', border: '1px solid var(--c-accent-soft)',
+            fontSize: 12, color: 'var(--c-accent)', display: 'flex', alignItems: 'center', gap: 8,
           }}>
             <span className="animate-pulse">✦</span>
             Claude is reading all intelligence layers and writing the full investigation report…
@@ -220,8 +224,9 @@ export default function DossierPanel({ caseId }) {
         <div
           className="dossier-content"
           style={{
-            padding: 20, borderRadius: 12,
+            padding: 24, borderRadius: 'var(--r-card)',
             background: 'var(--c-surface)', border: '1px solid var(--c-border)',
+            boxShadow: 'var(--c-shadow-sm)',
             fontSize: 13, lineHeight: 1.7,
           }}
         >
@@ -246,7 +251,7 @@ function buildDossierMarkdown(claim, rules, docs, steps) {
     ? steps.map(s => `| ${s.step} | ${s.name} | ${(s.status || 'not_run').replace(/_/g, ' ')} | ${s.detail || '—'} |`).join('\n')
     : '| — | No checklist data | — | — |'
 
-  return `# Supplemental Health Claim Dossier
+  return `# Travel Insurance Claim Dossier
 
 ## Claim Overview
 
@@ -287,6 +292,6 @@ ${(claim.workflow_tasks || []).length > 0
 
 ---
 
-*Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} · Prudential Supplemental Health Examiner Workflow*
+*Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} · Zurich Travel Guard Claims Examiner Workflow*
 `
 }

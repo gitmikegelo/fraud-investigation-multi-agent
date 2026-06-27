@@ -28,12 +28,14 @@ class RiskBreakdown:
 
 CATEGORY_WEIGHTS = {
     "policy": 0.10,
-    "member": 0.15,
-    "claim": 0.15,
+    "member": 0.12,
+    "claim": 0.13,
     "provider": 0.10,
     "network": 0.10,
     "temporal": 0.05,
-    "rules_boost": 0.35,
+    "document_source": 0.08,   # NEW: mobile_scan_ratio, releasepoint_bypass
+    "benefit_stacking": 0.07,  # NEW: claims_per_event, relationship_type_diversity
+    "rules_boost": 0.25,
 }
 
 
@@ -208,6 +210,57 @@ def _temporal_features(claim, context) -> List[FeatureContribution]:
     return features
 
 
+def _document_source_features(claim, context) -> List[FeatureContribution]:
+    features = []
+    docs = [d for d in context.get("documents", []) if d.claim_id == claim.claim_id]
+    if not docs:
+        features.append(FeatureContribution("document_source", "mobile_scan_ratio", 0, 0, 0.5, 0))
+        features.append(FeatureContribution("document_source", "releasepoint_bypass", 0, 0, 0.5, 0))
+        return features
+
+    mobile = sum(1 for d in docs
+                 if getattr(d, "source_type", "") == "MOBILE_SCAN"
+                 or getattr(d, "metadata_app_signature", None))
+    mobile_ratio = mobile / len(docs)
+    features.append(FeatureContribution("document_source", "mobile_scan_ratio",
+                                        mobile_ratio, mobile_ratio, 0.5, mobile_ratio * 0.5))
+
+    facility = next((f for f in context.get("facilities", [])
+                     if f.facility_id == claim.facility_id), None)
+    has_rp = getattr(facility, "releasepoint_enrolled", False) if facility else False
+    member_submitted = any(
+        getattr(d, "source_type", "") in ("MOBILE_SCAN", "MEMBER_UPLOAD_PDF", "MEMBER_EMAIL")
+        for d in docs
+    )
+    bypass = 1.0 if has_rp and member_submitted else 0.0
+    features.append(FeatureContribution("document_source", "releasepoint_bypass",
+                                        bypass, bypass, 0.5, bypass * 0.5))
+    return features
+
+
+def _benefit_stacking_features(claim, context) -> List[FeatureContribution]:
+    features = []
+    batch_id = getattr(claim, "batch_claim_id", None)
+    if not batch_id:
+        features.append(FeatureContribution("benefit_stacking", "claims_per_event", 1, 0, 0.5, 0))
+        features.append(FeatureContribution("benefit_stacking", "relationship_type_diversity", 1, 0, 0.5, 0))
+        return features
+
+    batch_claims = [c for c in context.get("claims", [])
+                    if getattr(c, "batch_claim_id", None) == batch_id]
+    claims_per_event = len(batch_claims)
+    rel_types = len({getattr(c, "relationship_type", "SELF") for c in batch_claims})
+
+    claims_norm = _normalize(claims_per_event, 1, 15)
+    features.append(FeatureContribution("benefit_stacking", "claims_per_event",
+                                        claims_per_event, claims_norm, 0.5, claims_norm * 0.5))
+
+    rel_norm = _normalize(rel_types, 1, 4)
+    features.append(FeatureContribution("benefit_stacking", "relationship_type_diversity",
+                                        rel_types, rel_norm, 0.5, rel_norm * 0.5))
+    return features
+
+
 # ── Main Scoring Function ────────────────────────────────────────────────────
 
 def score_claim(claim, context: Dict, rules_results: list = None) -> RiskBreakdown:
@@ -223,6 +276,8 @@ def score_claim(claim, context: Dict, rules_results: list = None) -> RiskBreakdo
         "provider": _provider_features,
         "network": _network_features,
         "temporal": _temporal_features,
+        "document_source": _document_source_features,
+        "benefit_stacking": _benefit_stacking_features,
     }
 
     for cat, func in extractors.items():
@@ -255,7 +310,7 @@ def score_claim(claim, context: Dict, rules_results: list = None) -> RiskBreakdo
     # Rules boost applied as a direct additive: up to 60 points from rules alone
     rules_direct = rules_boost * 60.0
     # Feature-based score: up to 50 points
-    feature_score = base_total * (100.0 / 0.65)  # Normalize since non-boost weights sum to 0.65
+    feature_score = base_total * (100.0 / 0.75)  # Normalize since non-boost weights sum to 0.75
 
     # Combined score
     score = min(100.0, feature_score * 0.4 + rules_direct)

@@ -70,7 +70,8 @@ def scan_suspicious_entities(
         if not risk or risk.total_score < min_risk_score:
             continue
         claim = _context.get_claim(case.case_id)
-        member = _context.get_member(claim.member_id) if claim else None
+        member_id = getattr(claim, 'member_id', None) or getattr(claim, 'traveler_id', None)
+        member = _context.get_member(member_id) if claim and member_id else None
 
         results.append({
             'entity_id': case.subject_id,

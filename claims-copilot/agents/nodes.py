@@ -118,13 +118,24 @@ def _safe_agent_invoke(agent, messages: list, agent_name: str, fallback_message:
             }
 
 try:
-    from .prompts import (
-        ORCHESTRATOR_PROMPT,
-        INVESTIGATION_PROMPT,
-        DOSSIER_PROMPT
-    )
-    from .tools_investigation import INVESTIGATION_TOOLS
-    from .tools_dossier import DOSSIER_TOOLS, clear_tool_cache
+    import os as _os
+    _DOMAIN_MODE = _os.getenv("DOMAIN_MODE", "travel")
+    if _DOMAIN_MODE == "travel":
+        from .prompts_investigation_travel import (
+            ORCHESTRATOR_PROMPT,
+            INVESTIGATION_PROMPT,
+            DOSSIER_PROMPT,
+        )
+        from .tools_investigation_travel import INVESTIGATION_TOOLS
+        from .tools_dossier_travel import DOSSIER_TOOLS, clear_tool_cache
+    else:
+        from .prompts import (
+            ORCHESTRATOR_PROMPT,
+            INVESTIGATION_PROMPT,
+            DOSSIER_PROMPT,
+        )
+        from .tools_investigation import INVESTIGATION_TOOLS
+        from .tools_dossier import DOSSIER_TOOLS, clear_tool_cache
 except ImportError:
     ORCHESTRATOR_PROMPT = INVESTIGATION_PROMPT = DOSSIER_PROMPT = ""
     INVESTIGATION_TOOLS = DOSSIER_TOOLS = []
@@ -201,9 +212,9 @@ class LLMInputLogger(BaseCallbackHandler):
 
 
 def get_bedrock_llm(temperature: float = 0.1, max_tokens: int = 4096, agent_name: str = "LLM"):
-    """Get AWS Bedrock Claude 3.5 Haiku instance using Converse API."""
+    """Get AWS Bedrock Claude 3 Sonnet instance using Converse API."""
     import os
-    model_id = os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-3-5-haiku-20241022-v1:0')
+    model_id = os.getenv('BEDROCK_MODEL_ID', 'anthropic.claude-3-sonnet-20240229-v1:0')
     region = os.getenv('AWS_REGION', 'us-east-1')
     return ChatBedrockConverse(
         model=model_id,
@@ -348,7 +359,7 @@ def get_investigation_agent():
     """Get or create the investigation agent."""
     global investigation_agent
     if investigation_agent is None:
-        llm = get_bedrock_llm(temperature=0.1, max_tokens=8192, agent_name='Investigation')
+        llm = get_bedrock_llm(temperature=0.1, max_tokens=4096, agent_name='Investigation')
         investigation_agent = create_react_agent(
             llm,
             INVESTIGATION_TOOLS,
@@ -468,7 +479,7 @@ def get_dossier_agent():
     """Get or create the dossier agent."""
     global dossier_agent
     if dossier_agent is None:
-        llm = get_bedrock_llm(temperature=0.1, max_tokens=8192, agent_name='Dossier')
+        llm = get_bedrock_llm(temperature=0.1, max_tokens=4096, agent_name='Dossier')
         dossier_agent = create_react_agent(
             llm,
             DOSSIER_TOOLS,
@@ -493,15 +504,30 @@ def dossier_node(state: InvestigationState) -> InvestigationState:
     findings = state.get('findings', {})
     findings_summary = str(findings)
     _log('Dossier', f'Findings payload size: {len(findings_summary)} chars')
-    
+
     # Truncate findings if too large to avoid context window overflow
     if len(findings_summary) > MAX_FINDINGS_LENGTH:
         findings_summary = _truncate_text(findings_summary, MAX_FINDINGS_LENGTH, "findings")
-    
+
+    # Include the original claim context so the dossier can compile even if the
+    # investigation tools returned no results (e.g. travel claims crashing scan tool).
+    original_claim_context = ""
+    for msg in state.get('messages', []):
+        if isinstance(msg, HumanMessage):
+            original_claim_context = _truncate_text(
+                _extract_text(msg.content), 2000, "original claim context"
+            )
+            break
+
+    dossier_input = f"Assess the following investigation findings and compile a dossier:\n\n{findings_summary}"
+    if original_claim_context and "Investigation could not complete" in findings_summary:
+        dossier_input += (
+            f"\n\n## Original Claim Context (use this to compile the dossier if investigation data is sparse):\n"
+            f"{original_claim_context}"
+        )
+
     # Create message for dossier agent
-    dossier_message = HumanMessage(
-        content=f"Assess the following investigation findings and compile a dossier:\n\n{findings_summary}"
-    )
+    dossier_message = HumanMessage(content=dossier_input)
     
     _log('Dossier', 'Invoking LLM + tool loop (evidence assessment & compilation)...')
     _log('Dossier', f'Initial message to agent: {len(dossier_message.content)} chars')

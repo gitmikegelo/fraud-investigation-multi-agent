@@ -1,0 +1,109 @@
+PROOF: /ws/investigate/BL-303 transcript
+messages=104 accepted=True complete=True
+supplemental_marker_msgs=0  travel_marker_msgs=26
+============================================================
+
+[001] connected: {"type": "connected", "timestamp": "2026-06-27T15:54:03.909307", "claim_id": "BL-303", "subject_name": "Donna Walker", "message": "Connected \u2014 investigating Donna Walker"}
+[002] status: {"type": "status", "timestamp": "2026-06-27T15:54:03.915672", "message": "Investigation starting (demo mode)..."}
+[003] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:04.467117", "node": "orchestrator", "iteration": 1}
+[004] log: {"type": "log", "timestamp": "2026-06-27T15:54:04.517552", "agent": "Orchestrator", "message": "--- Iteration 1 | Current phase: start ---"}
+[005] log: {"type": "log", "timestamp": "2026-06-27T15:54:04.870935", "agent": "Orchestrator", "message": "Calling LLM for routing decision..."}
+[006] log: {"type": "log", "timestamp": "2026-06-27T15:54:06.025433", "agent": "Orchestrator", "message": "LLM responded in 1.2s"}
+[007] log: {"type": "log", "timestamp": "2026-06-27T15:54:06.377954", "agent": "Orchestrator", "message": "Phase transition: start -> investigate"}
+[008] phase_change: {"type": "phase_change", "timestamp": "2026-06-27T15:54:06.731637", "phase": "investigate", "loop_count": 1}
+[009] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:06.782347", "node": "orchestrator", "elapsed": 1.5, "phase": "investigate", "loop_count": 1}
+[010] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:06.832727", "node": "investigation", "iteration": 2}
+[011] log: {"type": "log", "timestamp": "2026-06-27T15:54:06.883676", "agent": "Investigation", "message": "Starting investigation sub-agent (7 tools available)..."}
+[012] log: {"type": "log", "timestamp": "2026-06-27T15:54:07.235508", "agent": "Investigation", "message": "Invoking LLM + tool loop..."}
+[013] log: {"type": "log", "timestamp": "2026-06-27T15:54:07.588238", "agent": "tool", "message": "tool:scan_suspicious_entities -> Scanning case queue (risk > 40)..."}
+[014] log: {"type": "log", "timestamp": "2026-06-27T15:54:08.941029", "agent": "tool", "message": "tool:scan_suspicious_entities -> Found 7 high-risk entities; top: BL-303 (99.0), BL-040 (93.6) (0.3s)"}
+[015] log: {"type": "log", "timestamp": "2026-06-27T15:54:09.293997", "agent": "tool", "message": "tool:profile_entity -> Profiling TRV-0003 (Donna Walker)..."}
+[016] log: {"type": "log", "timestamp": "2026-06-27T15:54:10.447742", "agent": "tool", "message": "tool:profile_entity -> Traveler, 6 claims, current claim BL-303 $15.2K baggage_loss, loyalty=standard"}
+[017] log: {"type": "log", "timestamp": "2026-06-27T15:54:10.800101", "agent": "tool", "message": "tool:get_claim_details -> Fetching claim BL-303..."}
+[018] log: {"type": "log", "timestamp": "2026-06-27T15:54:11.656508", "agent": "tool", "message": "tool:get_claim_details -> baggage_loss $15,200; 7 luxury items, no receipts; rules R-004, R-007, R-011"}
+[019] log: {"type": "log", "timestamp": "2026-06-27T15:54:12.009516", "agent": "tool", "message": "tool:compare_to_peers -> Comparing TRV-0003 baggage_value vs traveler peers..."}
+[020] log: {"type": "log", "timestamp": "2026-06-27T15:54:12.862807", "agent": "tool", "message": "tool:compare_to_peers -> Value: $15,200, peer_avg: $2,312, z-score: 5.09"}
+[021] log: {"type": "log", "timestamp": "2026-06-27T15:54:13.218723", "agent": "Investigation", "message": "Sub-agent finished in 8.2s | Tool calls made: 4"}
+[022] log: {"type": "log", "timestamp": "2026-06-27T15:54:13.572287", "agent": "Investigation", "message": "Summary: BL-303 is an extreme baggage_loss outlier (6.6x peer avg) by serial claimer TRV-0003..."}
+[023] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:13.924663", "node": "investigation", "elapsed": 10.0, "findings_preview": "BL-303 risk 99.0, $15,200 baggage_loss (6.6x peer avg, z=5.09), 7 luxury items no receipts, traveler TRV-0003 has 6 claims. Exceeds $2,500 policy limit..."}
+[024] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:13.975404", "node": "orchestrator", "iteration": 3}
+[025] log: {"type": "log", "timestamp": "2026-06-27T15:54:14.026284", "agent": "Orchestrator", "message": "--- Iteration 2 | Current phase: investigate ---"}
+[026] log: {"type": "log", "timestamp": "2026-06-27T15:54:14.380918", "agent": "Orchestrator", "message": "Phase transition: investigate -> compile"}
+[027] phase_change: {"type": "phase_change", "timestamp": "2026-06-27T15:54:14.734652", "phase": "compile", "loop_count": 2}
+[028] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:14.785521", "node": "orchestrator", "elapsed": 11.5, "phase": "compile", "loop_count": 2}
+[029] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:14.836838", "node": "dossier", "iteration": 4}
+[030] log: {"type": "log", "timestamp": "2026-06-27T15:54:14.887632", "agent": "Dossier", "message": "Starting dossier sub-agent (5 tools available)..."}
+[031] log: {"type": "log", "timestamp": "2026-06-27T15:54:15.241313", "agent": "Dossier", "message": "Invoking LLM + tool loop (evidence assessment)..."}
+[032] log: {"type": "log", "timestamp": "2026-06-27T15:54:15.594628", "agent": "tool", "message": "tool:assess_evidence -> Assessing 'baggage_padding' (3 evidence points)..."}
+[033] log: {"type": "log", "timestamp": "2026-06-27T15:54:16.747160", "agent": "tool", "message": "tool:assess_evidence -> INSUFFICIENT (2 passed, 2 failed)"}
+[034] log: {"type": "log", "timestamp": "2026-06-27T15:54:17.100411", "agent": "tool", "message": "tool:assess_evidence -> Missing: document_evidence, regulatory_citation"}
+[035] log: {"type": "log", "timestamp": "2026-06-27T15:54:17.457227", "agent": "Dossier", "message": "Evidence assessed as INSUFFICIENT - looping back to investigation"}
+[036] dossier_rejected: {"type": "dossier_rejected", "timestamp": "2026-06-27T15:54:17.810663", "message": "Dossier rejected \u2014 evidence INSUFFICIENT. 2 of 6 critical checks failed.", "evidence_gaps": "CASE WRITER DENIAL NOTE \u2014 Iteration 1\n======================================\n\nCLAIM: Baggage padding on BL-303 \u2014 TRV-0003 (Donna Walker)\nASSESSMENT: INSUFFICIENT \u2014 Cannot proceed to formal dossier\n\
+[037] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:17.861337", "node": "dossier", "elapsed": 14.0, "evidence_sufficient": false}
+[038] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:17.911952", "node": "orchestrator", "iteration": 5}
+[039] log: {"type": "log", "timestamp": "2026-06-27T15:54:17.962381", "agent": "Orchestrator", "message": "--- Iteration 3 | Current phase: investigate ---"}
+[040] log: {"type": "log", "timestamp": "2026-06-27T15:54:18.315546", "agent": "Orchestrator", "message": "Evidence INSUFFICIENT - looping back to investigation"}
+[041] log: {"type": "log", "timestamp": "2026-06-27T15:54:18.669475", "agent": "Orchestrator", "message": "Phase transition: investigate -> investigate"}
+[042] phase_change: {"type": "phase_change", "timestamp": "2026-06-27T15:54:19.023816", "phase": "investigate", "loop_count": 3}
+[043] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:19.074373", "node": "orchestrator", "elapsed": 15.5, "phase": "investigate", "loop_count": 3}
+[044] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:19.124728", "node": "investigation", "iteration": 6}
+[045] log: {"type": "log", "timestamp": "2026-06-27T15:54:19.176021", "agent": "Investigation", "message": "Starting investigation sub-agent (addressing evidence gaps)..."}
+[046] log: {"type": "log", "timestamp": "2026-06-27T15:54:19.528972", "agent": "Investigation", "message": "Evidence gaps: need photo/document forensics on the luggage image"}
+[047] log: {"type": "log", "timestamp": "2026-06-27T15:54:19.882297", "agent": "tool", "message": "tool:get_claim_details -> Reviewing BL-303 evidence-image vision checks..."}
+[048] log: {"type": "log", "timestamp": "2026-06-27T15:54:21.235680", "agent": "tool", "message": "tool:get_claim_details -> DOC-002 CRITICAL: jagged hole appears deliberately created, inconsistent with transport damage"}
+[049] log: {"type": "log", "timestamp": "2026-06-27T15:54:21.588610", "agent": "tool", "message": "tool:get_claim_details -> DOC-005 WARNING: baggage tag illegible \u2014 claimant identity unconfirmed (routing LHR\u2192JFK)"}
+[050] log: {"type": "log", "timestamp": "2026-06-27T15:54:21.941060", "agent": "tool", "message": "tool:find_ring -> Checking for related baggage/value-padding patterns (risk >= 50)..."}
+[051] log: {"type": "log", "timestamp": "2026-06-27T15:54:23.194320", "agent": "tool", "message": "tool:find_ring -> No coordinated ring; isolated high-value claimant TRV-0003"}
+[052] log: {"type": "log", "timestamp": "2026-06-27T15:54:23.546775", "agent": "tool", "message": "tool:compare_to_peers -> Comparing TRV-0003 claim_count vs travelers..."}
+[053] log: {"type": "log", "timestamp": "2026-06-27T15:54:24.401672", "agent": "tool", "message": "tool:compare_to_peers -> Value: 6, peer_avg: 1.4, z-score: 3.1 (serial claimer)"}
+[054] log: {"type": "log", "timestamp": "2026-06-27T15:54:24.754584", "agent": "Investigation", "message": "Sub-agent finished in 6.8s | Tool calls made: 3"}
+[055] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:25.107961", "node": "investigation", "elapsed": 23.0, "findings_preview": "Photo forensics confirm staged damage (DOC-002 CRITICAL); identity unverified (DOC-005). Serial-claimer z-score 3.1. Awaiting TG regulatory citations..."}
+[056] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:25.158500", "node": "orchestrator", "iteration": 7}
+[057] log: {"type": "log", "timestamp": "2026-06-27T15:54:25.209170", "agent": "Orchestrator", "message": "--- Iteration 4 | Current phase: investigate ---"}
+[058] log: {"type": "log", "timestamp": "2026-06-27T15:54:25.562533", "agent": "Orchestrator", "message": "Phase transition: investigate -> compile"}
+[059] phase_change: {"type": "phase_change", "timestamp": "2026-06-27T15:54:25.915529", "phase": "compile", "loop_count": 4}
+[060] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:25.966360", "node": "orchestrator", "elapsed": 24.5, "phase": "compile", "loop_count": 4}
+[061] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:26.017250", "node": "dossier", "iteration": 8}
+[062] log: {"type": "log", "timestamp": "2026-06-27T15:54:26.068184", "agent": "Dossier", "message": "Starting dossier sub-agent..."}
+[063] log: {"type": "log", "timestamp": "2026-06-27T15:54:26.422940", "agent": "tool", "message": "tool:assess_evidence -> Assessing 'baggage_padding' (6 evidence points)..."}
+[064] log: {"type": "log", "timestamp": "2026-06-27T15:54:27.575289", "agent": "tool", "message": "tool:assess_evidence -> INSUFFICIENT (4 passed, 1 failed)"}
+[065] log: {"type": "log", "timestamp": "2026-06-27T15:54:27.927121", "agent": "tool", "message": "tool:assess_evidence -> Missing: regulatory_citation \u2014 need TG rule references"}
+[066] log: {"type": "log", "timestamp": "2026-06-27T15:54:28.279080", "agent": "Dossier", "message": "Evidence INSUFFICIENT \u2014 missing regulatory citations"}
+[067] dossier_rejected: {"type": "dossier_rejected", "timestamp": "2026-06-27T15:54:28.631415", "message": "Dossier rejected \u2014 still INSUFFICIENT. 1 of 6 critical checks failed.", "evidence_gaps": "CASE WRITER DENIAL NOTE \u2014 Iteration 2\n======================================\n\nCLAIM: Baggage padding on BL-303 \u2014 TRV-0003 (Donna Walker)\nASSESSMENT: INSUFFICIENT \u2014 Strong quantitative + forensic case bu
+[068] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:28.682088", "node": "dossier", "elapsed": 27.0, "evidence_sufficient": false}
+[069] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:28.732842", "node": "orchestrator", "iteration": 9}
+[070] log: {"type": "log", "timestamp": "2026-06-27T15:54:28.783108", "agent": "Orchestrator", "message": "--- Iteration 5 | Current phase: investigate ---"}
+[071] log: {"type": "log", "timestamp": "2026-06-27T15:54:29.136531", "agent": "Orchestrator", "message": "Phase transition: investigate -> investigate"}
+[072] phase_change: {"type": "phase_change", "timestamp": "2026-06-27T15:54:29.489133", "phase": "investigate", "loop_count": 5}
+[073] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:29.539970", "node": "orchestrator", "elapsed": 28.5, "phase": "investigate", "loop_count": 5}
+[074] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:29.590557", "node": "investigation", "iteration": 10}
+[075] log: {"type": "log", "timestamp": "2026-06-27T15:54:29.641482", "agent": "Investigation", "message": "Gathering regulatory basis for baggage value-padding..."}
+[076] log: {"type": "log", "timestamp": "2026-06-27T15:54:29.993640", "agent": "tool", "message": "tool:get_claim_details -> Confirming BL-303 rule triggers and coverage limit..."}
+[077] log: {"type": "log", "timestamp": "2026-06-27T15:54:31.147439", "agent": "tool", "message": "tool:get_claim_details -> R-004 (outlier), R-007 (serial), R-011 (photo review BLOCK); limit $2,500 exceeded by $12,700"}
+[078] log: {"type": "log", "timestamp": "2026-06-27T15:54:31.501082", "agent": "Investigation", "message": "Sub-agent finished in 2.5s | Tool calls made: 1"}
+[079] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:31.853646", "node": "investigation", "elapsed": 31.5, "findings_preview": "Confirmed rule triggers R-004/R-007/R-011 and $12,700 over-limit. Combined with forensics, TG-004/TG-007/TG-009 applicable..."}
+[080] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:31.903985", "node": "orchestrator", "iteration": 11}
+[081] log: {"type": "log", "timestamp": "2026-06-27T15:54:31.954501", "agent": "Orchestrator", "message": "--- Iteration 6 | Current phase: investigate ---"}
+[082] log: {"type": "log", "timestamp": "2026-06-27T15:54:32.306896", "agent": "Orchestrator", "message": "Phase transition: investigate -> compile"}
+[083] phase_change: {"type": "phase_change", "timestamp": "2026-06-27T15:54:32.659402", "phase": "compile", "loop_count": 6}
+[084] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:32.709970", "node": "orchestrator", "elapsed": 33.0, "phase": "compile", "loop_count": 6}
+[085] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:32.760769", "node": "dossier", "iteration": 12}
+[086] log: {"type": "log", "timestamp": "2026-06-27T15:54:32.811395", "agent": "Dossier", "message": "Starting dossier sub-agent..."}
+[087] log: {"type": "log", "timestamp": "2026-06-27T15:54:33.163704", "agent": "tool", "message": "tool:assess_evidence -> Assessing 'baggage_padding' (8 evidence points)..."}
+[088] log: {"type": "log", "timestamp": "2026-06-27T15:54:34.317474", "agent": "tool", "message": "tool:assess_evidence -> SUFFICIENT (5 passed, 0 failed)"}
+[089] log: {"type": "log", "timestamp": "2026-06-27T15:54:34.670546", "agent": "tool", "message": "tool:search_regulatory_rules -> Searching rules for baggage_loss..."}
+[090] log: {"type": "log", "timestamp": "2026-06-27T15:54:35.623643", "agent": "tool", "message": "tool:search_regulatory_rules -> Found 3 applicable rules: TG-004, TG-007, TG-009"}
+[091] log: {"type": "log", "timestamp": "2026-06-27T15:54:35.975600", "agent": "tool", "message": "tool:find_similar_cases -> Looking up precedents for baggage_padding..."}
+[092] log: {"type": "log", "timestamp": "2026-06-27T15:54:36.828439", "agent": "tool", "message": "tool:find_similar_cases -> Found 2 precedent cases"}
+[093] log: {"type": "log", "timestamp": "2026-06-27T15:54:37.181388", "agent": "tool", "message": "tool:estimate_recovery -> Baggage padding: $15.2K claimed, $2.5K limit..."}
+[094] log: {"type": "log", "timestamp": "2026-06-27T15:54:38.034640", "agent": "tool", "message": "tool:estimate_recovery -> Over-limit exposure $12,700; net prevention $12,700"}
+[095] log: {"type": "log", "timestamp": "2026-06-27T15:54:38.386388", "agent": "tool", "message": "tool:compile_dossier -> Generating travel-insurance fraud dossier..."}
+[096] log: {"type": "log", "timestamp": "2026-06-27T15:54:39.742154", "agent": "tool", "message": "tool:compile_dossier -> Dossier generated (3,180 chars)"}
+[097] log: {"type": "log", "timestamp": "2026-06-27T15:54:40.094031", "agent": "Dossier", "message": "Evidence assessed as SUFFICIENT"}
+[098] dossier_accepted: {"type": "dossier_accepted", "timestamp": "2026-06-27T15:54:40.447043", "message": "Evidence SUFFICIENT \u2014 dossier compiled."}
+[099] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:40.497670", "node": "dossier", "elapsed": 38.0, "evidence_sufficient": true}
+[100] node_enter: {"type": "node_enter", "timestamp": "2026-06-27T15:54:40.547989", "node": "orchestrator", "iteration": 13}
+[101] log: {"type": "log", "timestamp": "2026-06-27T15:54:40.598643", "agent": "Orchestrator", "message": "Phase transition: compile -> done"}
+[102] phase_change: {"type": "phase_change", "timestamp": "2026-06-27T15:54:40.950954", "phase": "done", "loop_count": 7}
+[103] node_exit: {"type": "node_exit", "timestamp": "2026-06-27T15:54:41.001580", "node": "orchestrator", "elapsed": 39.0, "phase": "done", "loop_count": 7}
+[104] investigation_complete: {"type": "investigation_complete", "timestamp": "2026-06-27T15:54:41.052555", "iterations": 13, "total_time": 39.0, "phase": "done", "loop_count": 7, "evidence_sufficient": true, "dossier": "# TRAVEL INSURANCE FRAUD INVESTIGATION DOSSIER\n\n**Hypothesis**: Baggage value-padding with staged damage \u2014 luxury-item baggage_loss claim 6.6x peer average, exceeding policy limit, supported by a manipu

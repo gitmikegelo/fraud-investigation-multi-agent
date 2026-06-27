@@ -14,10 +14,22 @@ const EVENT_ICONS = {
   log: '\u{1F4DD}',
 }
 
+// Unified category pill palette — consistent muted tints (matches graph accents)
 const NODE_BADGE_COLORS = {
-  orchestrator: { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
-  investigation: { bg: 'var(--c-green-bg)', text: 'var(--c-green)', border: 'var(--c-green-border)' },
-  dossier: { bg: 'var(--c-amber-bg)', text: 'var(--c-amber)', border: 'var(--c-amber-border)' },
+  orchestrator:  { bg: 'rgba(168,85,247,0.10)', text: '#7c3aed' },
+  investigation: { bg: 'rgba(34,197,94,0.10)',  text: '#15803d' },
+  dossier:       { bg: 'rgba(245,158,11,0.10)', text: '#b45309' },
+}
+
+// Shared pill styling so every category chip is identical in shape
+const PILL_BASE = {
+  fontSize: 10,
+  fontWeight: 600,
+  padding: '2px 8px',
+  borderRadius: 999,
+  letterSpacing: '0.02em',
+  lineHeight: 1.5,
+  display: 'inline-block',
 }
 
 // Distinctive row styles for rejection / acceptance events
@@ -40,11 +52,12 @@ export default function EventTimeline({ events, logs, isRunning }) {
 
   const items = tab === 'events' ? events : logs
 
-  // Auto-scroll
+  // Auto-scroll to newest — smoothly, and respecting reduced-motion
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
+    const el = scrollRef.current
+    if (!el) return
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    el.scrollTo({ top: el.scrollHeight, behavior: reduce ? 'auto' : 'smooth' })
   }, [items])
 
   return (
@@ -61,7 +74,7 @@ export default function EventTimeline({ events, logs, isRunning }) {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className="px-4 py-2.5 text-sm font-medium transition-colors relative cursor-pointer"
+            className="px-4 py-3 text-sm font-semibold transition-colors relative cursor-pointer"
             style={{
               color: tab === t.key ? 'var(--c-accent)' : 'var(--c-text-dim)',
               background: 'transparent',
@@ -70,14 +83,17 @@ export default function EventTimeline({ events, logs, isRunning }) {
           >
             {t.label}
             <span
-              className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full"
-              style={{ background: 'var(--c-surface2)', color: 'var(--c-text-dim)' }}
+              className="ml-1.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-full"
+              style={{
+                background: tab === t.key ? 'var(--c-accent-soft)' : 'var(--c-surface2)',
+                color: tab === t.key ? 'var(--c-accent)' : 'var(--c-text-dim)',
+              }}
             >
               {t.count}
             </span>
             {tab === t.key && (
               <div
-                className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full"
+                className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
                 style={{ background: 'var(--c-accent)' }}
               />
             )}
@@ -100,9 +116,9 @@ export default function EventTimeline({ events, logs, isRunning }) {
             {isRunning ? 'Waiting for events\u2026' : 'Start an investigation to see events'}
           </div>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {items.map((item, i) => (
-              <div key={i} className="log-entry">
+              <div key={i} className="console-row-in">
                 {tab === 'events' ? (
                   <EventRow event={item} />
                 ) : (
@@ -162,10 +178,7 @@ function EventRow({ event }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           {badge && (
-            <span
-              className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-              style={{ background: badge.bg, color: badge.text, border: `1px solid ${badge.border}` }}
-            >
+            <span style={{ ...PILL_BASE, background: badge.bg, color: badge.text }}>
               {event.node}
             </span>
           )}
@@ -174,16 +187,10 @@ function EventRow({ event }) {
           </span>
           {hasDetails && (
             <span
-              className="text-[10px] px-1.5 py-0.5 rounded"
-              style={{
-                background: 'var(--c-accent-light)',
-                color: 'var(--c-accent)',
-                border: '1px solid #c7d2fe',
-                cursor: 'help',
-              }}
+              style={{ ...PILL_BASE, background: 'var(--c-accent-soft)', color: 'var(--c-accent)', cursor: 'help' }}
               title="Hover for details"
             >
-              \u2139\uFE0F
+              details
             </span>
           )}
           {isLong && (
@@ -209,8 +216,8 @@ function EventRow({ event }) {
         {/* Phase badge for phase_change */}
         {event.phase && (
           <span
-            className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide"
-            style={{ background: 'var(--c-accent-light)', color: 'var(--c-accent)', border: '1px solid #c7d2fe' }}
+            className="mt-1"
+            style={{ ...PILL_BASE, background: 'var(--c-accent-soft)', color: 'var(--c-accent)', textTransform: 'uppercase' }}
           >
             {event.phase}
           </span>
@@ -232,22 +239,7 @@ function EventRow({ event }) {
               {gapsExpanded ? '\u25BC Case Writer Note' : '\u25B6 Case Writer Note'}
             </button>
             {gapsExpanded && (
-              <div
-                className="text-xs rounded-md p-3 mt-1"
-                style={{
-                  background: 'var(--c-surface)',
-                  border: '1px solid var(--c-border)',
-                  color: 'var(--c-text)',
-                  whiteSpace: 'pre-wrap',
-                  lineHeight: '1.5',
-                  fontFamily: 'ui-monospace, monospace',
-                  fontSize: 11,
-                  maxHeight: 300,
-                  overflowY: 'auto',
-                }}
-              >
-                {event.evidence_gaps}
-              </div>
+              <FindingsCard heading="Case Writer Note" text={event.evidence_gaps} tone="red" />
             )}
           </div>
         )}
@@ -256,36 +248,94 @@ function EventRow({ event }) {
         {formatTs(event.timestamp)}
       </span>
 
-      {/* Tooltip for non-rejection details */}
+      {/* Details popover — clean summary card (no monospace dump) */}
       {showTooltip && hasDetails && (
         <div
-          className="absolute z-50 px-3 py-2 text-xs rounded-md shadow-lg border"
+          className="absolute z-50"
           style={{
-            background: 'var(--c-surface)',
-            borderColor: 'var(--c-border)',
-            color: 'var(--c-text)',
             top: '100%',
-            left: '0',
-            marginTop: '4px',
-            maxWidth: '400px',
-            minWidth: '250px',
-            whiteSpace: 'pre-wrap',
-            lineHeight: '1.4',
+            left: 0,
+            marginTop: 6,
+            maxWidth: 400,
+            minWidth: 260,
+            boxShadow: 'var(--c-shadow-md)',
+            borderRadius: 12,
           }}
         >
-          {event.findings_preview && typeof event.findings_preview === 'string' && (
-            <div>
-              <div className="font-semibold mb-1" style={{ color: 'var(--c-green)' }}>
-                Findings:
-              </div>
-              <div>{event.findings_preview}</div>
-            </div>
-          )}
-          {event.details && !event.findings_preview && typeof event.details === 'string' && (
-            <div>{event.details}</div>
+          {event.findings_preview && typeof event.findings_preview === 'string' ? (
+            <FindingsCard heading="Findings" text={event.findings_preview} tone="green" />
+          ) : (
+            event.details && typeof event.details === 'string' && (
+              <FindingsCard heading="Details" text={event.details} tone="neutral" />
+            )
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Tidy summary card — replaces the old monospace terminal block.
+ * Renders a small heading then the text as a clean, comfortably-spaced list.
+ */
+const FINDINGS_TONE = {
+  green:   { dot: 'var(--c-green)',  heading: 'var(--c-green)' },
+  red:     { dot: 'var(--c-red)',    heading: 'var(--c-red)' },
+  neutral: { dot: 'var(--c-text-muted)', heading: 'var(--c-text-dim)' },
+}
+
+function splitFindings(text) {
+  // Break a blob into discrete points: explicit list markers first, else lines, else sentences.
+  const raw = String(text).trim()
+  const byMarker = raw
+    .split(/\n+|(?:^|\s)[•\-*]\s+|(?:^|\s)\d+[.)]\s+/g)
+    .map(s => s.trim())
+    .filter(Boolean)
+  if (byMarker.length > 1) return byMarker
+  return [raw]
+}
+
+function FindingsCard({ heading, text, tone = 'neutral' }) {
+  const t = FINDINGS_TONE[tone] || FINDINGS_TONE.neutral
+  const items = splitFindings(text)
+
+  return (
+    <div
+      style={{
+        background: 'var(--c-surface)',
+        border: '1px solid var(--c-border)',
+        borderRadius: 12,
+        padding: '12px 14px',
+        boxShadow: 'var(--c-shadow-sm)',
+        maxHeight: 320,
+        overflowY: 'auto',
+        fontFamily: 'Inter, system-ui, sans-serif',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
+          color: t.heading, marginBottom: 8,
+        }}
+      >
+        {heading}
+      </div>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {items.map((item, i) => (
+          <li key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <span
+              style={{
+                width: 5, height: 5, borderRadius: '50%', background: t.dot,
+                flexShrink: 0, marginTop: 7,
+              }}
+            />
+            <span style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--c-text)' }}>
+              {item}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -300,40 +350,33 @@ function LogRow({ log }) {
   // Highlight rejection / acceptance log rows from dossier agent
   const isRejectionLog = isDossierLog && log.message && log.message.includes('REJECTED')
   const isAcceptanceLog = isDossierLog && log.message && log.message.includes('ACCEPTED')
-  const isRejection = isRejectionLog
-  const isAcceptance = isAcceptanceLog
   const rowStyle = isRejectionLog
     ? { background: REJECTION_STYLE.bg, border: REJECTION_STYLE.border }
     : isAcceptanceLog
     ? { background: ACCEPTANCE_STYLE.bg, border: ACCEPTANCE_STYLE.border }
     : {}
 
-  // Badge colors for dossier agent
+  // Unified agent pill (same shape as event category pills)
   const badgeStyle = isDossierLog
-    ? { background: 'var(--c-amber-bg)', color: 'var(--c-amber)', border: '1px solid var(--c-amber-border)' }
-    : {
-        background: isToolLog ? 'var(--c-accent-light)' : 'var(--c-surface2)',
-        color: isToolLog ? 'var(--c-accent)' : 'var(--c-text-dim)',
-        border: `1px solid ${isToolLog ? '#c7d2fe' : 'var(--c-border)'}`,
-      }
+    ? { ...PILL_BASE, background: 'rgba(245,158,11,0.10)', color: '#b45309' }
+    : isToolLog
+    ? { ...PILL_BASE, background: 'var(--c-accent-soft)', color: 'var(--c-accent)' }
+    : { ...PILL_BASE, background: 'var(--c-surface2)', color: 'var(--c-text-dim)' }
 
   return (
     <div
-      className="flex items-start gap-2.5 py-1 px-2 rounded-md font-mono text-xs"
+      className="flex items-start gap-2.5 py-1.5 px-2 rounded-md text-xs"
       onMouseEnter={e => { if (!rowStyle.background) e.currentTarget.style.background = 'var(--c-surface2)' }}
       onMouseLeave={e => { if (!rowStyle.background) e.currentTarget.style.background = '' }}
       style={rowStyle}
     >
-      <span
-        className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded mt-0.5"
-        style={badgeStyle}
-      >
+      <span className="flex-shrink-0 mt-0.5" style={badgeStyle}>
         {log.agent}
       </span>
       <div className="flex-1 min-w-0 flex items-start gap-1.5 flex-wrap">
         <span
           className="break-words"
-          style={{ color: 'var(--c-text)', lineHeight: '1.5', whiteSpace: expanded ? 'pre-wrap' : undefined }}
+          style={{ color: 'var(--c-text)', lineHeight: 1.6, whiteSpace: expanded ? 'pre-wrap' : undefined }}
         >
           {displayMsg}
         </span>

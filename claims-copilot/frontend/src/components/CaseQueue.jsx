@@ -106,9 +106,9 @@ export default function CaseQueue({ onSelectCase }) {
             return (
               <button key={t.id} onClick={() => setDateTab(t.id)} style={{
                 padding: '8px 18px', fontSize: 12, fontWeight: active ? 600 : 400,
-                color: active ? '#c7d2fe' : 'var(--c-text-dim)',
+                color: active ? 'var(--c-accent)' : 'var(--c-text-dim)',
                 background: 'transparent', border: 'none', cursor: 'pointer',
-                borderBottom: active ? '2px solid #6366f1' : '2px solid transparent',
+                borderBottom: active ? '2px solid var(--c-accent)' : '2px solid transparent',
                 transition: 'all 0.15s',
               }}>
                 {t.label}
@@ -124,9 +124,9 @@ export default function CaseQueue({ onSelectCase }) {
             return (
               <button key={t.id || 'all'} onClick={() => setTypeTab(t.id)} style={{
                 fontSize: 10, fontWeight: 600, padding: '3px 10px', borderRadius: 12,
-                border: `1px solid ${active ? '#6366f1' : 'var(--c-border)'}`,
-                background: active ? 'rgba(99,102,241,0.12)' : 'transparent',
-                color: active ? '#c7d2fe' : 'var(--c-text-dim)',
+                border: `1px solid ${active ? 'var(--c-accent)' : 'var(--c-border)'}`,
+                background: active ? 'var(--c-accent-soft)' : 'transparent',
+                color: active ? 'var(--c-accent)' : 'var(--c-text-dim)',
                 cursor: 'pointer',
               }}>
                 {t.label}
@@ -169,10 +169,10 @@ export default function CaseQueue({ onSelectCase }) {
                       cursor: 'pointer', borderBottom: '1px solid var(--c-border)',
                       transition: 'background 0.1s',
                     }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.06)'}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--c-accent-faint)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    <td style={{ padding: '11px 16px', fontWeight: 600, color: '#818cf8', fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>
+                    <td style={{ padding: '11px 16px', fontWeight: 600, color: 'var(--c-blue)', fontFamily: 'ui-monospace, monospace', fontSize: 12 }}>
                       {c.case_id}
                     </td>
                     <td style={{ padding: '11px 16px' }}>

@@ -17,7 +17,7 @@ class ChecklistStepResult:
 CHECKLIST_STEPS = [
     (1, "Initial Review"),
     (2, "Eligibility Verification"),
-    (3, "Fraud Screening"),
+    (3, "Document AI Review"),
     (4, "Family & Network Check"),
     (5, "Medical Documentation Review"),
     (6, "Policy & Coverage Determination"),
@@ -149,11 +149,22 @@ def _step_eligibility(claim, context) -> ChecklistStepResult:
 
 
 def _step_fraud_screening(claim, context) -> ChecklistStepResult:
-    """Step 3: Fraud screening — branches on suspicious banner."""
+    """Step 3: Document AI review + fraud screening — branches on suspicious banner."""
     findings = []
     member = _get_member(context, claim.member_id)
     rules = _get_claim_rules(context, claim.claim_id)
     risk = _get_claim_risk(context, claim.claim_id)
+
+    # Build image details for the "View Source Document" button
+    doc_results = _get_claim_doc_results(context, claim.claim_id)
+    is_vision = any(getattr(d, 'details', {}).get('source') == 'vision_ai' for d in doc_results)
+    has_images = context.get("has_claim_images", False)
+    image_details = {}
+    if is_vision or has_images:
+        image_details = {
+            "has_document_image": True,
+            "image_url": f"/api/claims/{claim.claim_id}/document-image",
+        }
 
     has_banner = member.suspicious_banner if member else False
 
@@ -169,8 +180,8 @@ def _step_fraud_screening(claim, context) -> ChecklistStepResult:
         if flag_rules:
             findings.append(f"FLAG rules triggered: {', '.join(r.rule_id for r in flag_rules)}")
 
-        return ChecklistStepResult(3, "Fraud Screening", "needs_review", False, findings,
-                                   {"banner": True, "requires_senior_review": True})
+        return ChecklistStepResult(3, "Document AI Review", "needs_review", False, findings,
+                                   {"banner": True, "requires_senior_review": True, **image_details})
     else:
         # Standard scoring path
         risk_score = risk.total_score if risk else 0
@@ -179,8 +190,8 @@ def _step_fraud_screening(claim, context) -> ChecklistStepResult:
         if risk_score < 30 and not block_rules:
             findings.append(f"Risk score: {risk_score:.1f} (LOW) — auto-pass")
             findings.append("No BLOCK rules triggered")
-            return ChecklistStepResult(3, "Fraud Screening", "pass", True, findings,
-                                       {"risk_score": risk_score, "auto_passed": True})
+            return ChecklistStepResult(3, "Document AI Review", "pass", True, findings,
+                                       {"risk_score": risk_score, "auto_passed": True, **image_details})
         else:
             if block_rules:
                 findings.append(f"BLOCK rules: {', '.join(r.rule_id for r in block_rules)}")
@@ -190,8 +201,8 @@ def _step_fraud_screening(claim, context) -> ChecklistStepResult:
             findings.append(f"Risk score: {risk_score:.1f} ({risk.tier if risk else 'UNKNOWN'})")
 
             status = "fail" if block_rules else "needs_review"
-            return ChecklistStepResult(3, "Fraud Screening", status, False, findings,
-                                       {"risk_score": risk_score})
+            return ChecklistStepResult(3, "Document AI Review", status, False, findings,
+                                       {"risk_score": risk_score, **image_details})
 
 
 def _step_family_network(claim, context) -> ChecklistStepResult:
@@ -222,6 +233,14 @@ def _step_family_network(claim, context) -> ChecklistStepResult:
     else:
         findings.append("Shared address: Normal")
 
+    # R-017: Hospital Indemnity Stacking
+    r017 = next((r for r in rules if r.rule_id == "R-017"), None)
+    if r017 and r017.triggered:
+        findings.append(f"FLAG: {r017.explanation}")
+        all_ok = False
+    else:
+        findings.append("Benefit stacking: Normal")
+
     return ChecklistStepResult(4, "Family & Network Check", "pass" if all_ok else "needs_review",
                                all_ok, findings)
 
@@ -241,7 +260,9 @@ def _step_medical_docs(claim, context) -> ChecklistStepResult:
     is_vision = any(
         getattr(d, 'details', {}).get('source') == 'vision_ai' for d in doc_results
     )
-    if is_vision:
+    # Also show image button if image file exists, even if vision analysis failed
+    has_images = context.get("has_claim_images", False)
+    if is_vision or has_images:
         details["has_document_image"] = True
         details["image_url"] = f"/api/claims/{claim.claim_id}/document-image"
 
@@ -264,10 +285,43 @@ def _step_medical_docs(claim, context) -> ChecklistStepResult:
     mr_tasks = [t for t in tasks if t.task_type == "MEDICAL_RECORD_REQUEST"]
     for mrt in mr_tasks:
         if mrt.status == "pending":
-            findings.append(f"⏳ Medical records pending — waiting {mrt.days_waiting} days")
+            findings.append(f"\u23f3 Medical records pending \u2014 waiting {mrt.days_waiting} days")
             all_ok = False
         elif mrt.status == "completed":
             findings.append("Medical records received")
+
+    # R-016: Mobile scan app source
+    rules = _get_claim_rules(context, claim.claim_id)
+    r016 = next((r for r in rules if r.rule_id == "R-016"), None)
+    if r016 and r016.triggered:
+        findings.append(f"FLAG R-016: {r016.explanation}")
+        all_ok = False
+
+    # R-018: Document visual inconsistencies
+    r018 = next((r for r in rules if r.rule_id == "R-018"), None)
+    if r018 and r018.triggered:
+        findings.append(f"FLAG R-018: {r018.explanation}")
+        all_ok = False
+
+    # Raw document checks: source_type and ReleasePoint status
+    raw_docs = [d for d in context.get("documents", []) if d.claim_id == claim.claim_id]
+    for doc in raw_docs:
+        src = getattr(doc, "source_type", "")
+        if src in ("MOBILE_SCAN", "SCREENSHOT", "UNKNOWN"):
+            findings.append(f"\u26a0\ufe0f Document {doc.doc_id}: high-risk source ({src}) — request via ReleasePoint")
+            all_ok = False
+        rp = getattr(doc, "releasepoint_status", "NOT_REQUESTED")
+        if rp == "CONFIRMED_DISCREPANT":
+            findings.append(f"\u274c Document {doc.doc_id}: ReleasePoint records DISCREPANT with member submission")
+            all_ok = False
+        font = getattr(doc, "font_consistency_score", 1.0)
+        align = getattr(doc, "alignment_score", 1.0)
+        if font < 0.7 or align < 0.7:
+            findings.append(
+                f"\u26a0\ufe0f Document {doc.doc_id}: visual inconsistencies "
+                f"(font={font:.2f}, alignment={align:.2f})"
+            )
+            all_ok = False
 
     return ChecklistStepResult(5, "Medical Documentation Review",
                                "pass" if all_ok else "needs_review", all_ok, findings, details)

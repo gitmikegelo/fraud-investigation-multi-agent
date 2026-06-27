@@ -1,4 +1,4 @@
-"""15 deterministic rules (R-001 to R-015) for supplemental health claims."""
+"""15 deterministic rules (R-001 to R-015) for supplemental health claims + 3 new rules from real cases (R-016 to R-018)."""
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
@@ -294,6 +294,67 @@ def r015_family_claim_cluster(claim, context) -> RuleResult:
 
 # ── All Rules ────────────────────────────────────────────────────────────────
 
+def r016_mobile_scan_app_source(claim, context) -> RuleResult:
+    """R-016: Document submitted via mobile scan app (CamScanner etc.) -> FLAG"""
+    docs = [d for d in context.get("documents", []) if d.claim_id == claim.claim_id]
+    mobile_docs = [d for d in docs
+                   if getattr(d, "source_type", "") == "MOBILE_SCAN"
+                   or getattr(d, "metadata_app_signature", None) is not None]
+    triggered = len(mobile_docs) > 0
+    app_names = list({d.metadata_app_signature for d in mobile_docs if d.metadata_app_signature})
+    return RuleResult(
+        rule_id="R-016", rule_name="Mobile Scan App Source",
+        severity="FLAG", triggered=triggered,
+        explanation=(f"Document submitted via {app_names[0] if app_names else 'mobile scan app'} "
+                     f"({len(mobile_docs)} doc(s))")
+                    if triggered else "No mobile scan documents detected",
+        details={"mobile_doc_count": len(mobile_docs), "app_signatures": app_names},
+    )
+
+
+def r017_hospital_indemnity_stacking(claim, context) -> RuleResult:
+    """R-017: 4+ claims for same batch event with 2+ relationship types -> FLAG"""
+    batch_id = getattr(claim, "batch_claim_id", None)
+    if not batch_id:
+        return RuleResult("R-017", "Hospital Indemnity Stacking", "FLAG", False,
+                          "No batch claim ID — stacking not applicable")
+    batch_claims = [c for c in context.get("claims", [])
+                    if getattr(c, "batch_claim_id", None) == batch_id]
+    rel_types = {getattr(c, "relationship_type", "SELF") for c in batch_claims}
+    triggered = len(batch_claims) >= 4 and len(rel_types) >= 2
+    return RuleResult(
+        rule_id="R-017", rule_name="Hospital Indemnity Stacking",
+        severity="FLAG", triggered=triggered,
+        explanation=(f"{len(batch_claims)} claims in batch {batch_id} across "
+                     f"{len(rel_types)} relationship types")
+                    if triggered else (
+                     f"Batch has {len(batch_claims)} claims, {len(rel_types)} rel-type(s) — below threshold"),
+        details={"batch_claim_count": len(batch_claims),
+                 "relationship_types": list(rel_types), "batch_id": batch_id},
+    )
+
+
+def r018_document_visual_inconsistencies(claim, context) -> RuleResult:
+    """R-018: Font, alignment, or color consistency score < 0.7 -> FLAG"""
+    docs = [d for d in context.get("documents", []) if d.claim_id == claim.claim_id]
+    inconsistent = []
+    for d in docs:
+        font = getattr(d, "font_consistency_score", 1.0)
+        align = getattr(d, "alignment_score", 1.0)
+        color = getattr(d, "color_consistency_score", 1.0)
+        if font < 0.7 or align < 0.7 or color < 0.7:
+            inconsistent.append({"doc_id": d.doc_id, "font": font,
+                                  "alignment": align, "color": color})
+    triggered = len(inconsistent) > 0
+    return RuleResult(
+        rule_id="R-018", rule_name="Document Visual Inconsistencies",
+        severity="FLAG", triggered=triggered,
+        explanation=(f"{len(inconsistent)} doc(s) with visual inconsistencies "
+                     f"(font/alignment/color < 0.7)")
+                    if triggered else "All documents pass visual consistency checks",
+        details={"inconsistent_docs": inconsistent},
+    )
+
 ALL_RULES = [
     Rule("R-001", "Excessive Dependents", "BLOCK", ">10 dependents under single member"),
     Rule("R-002", "Rapid Dependent Filing", "BLOCK", ">5 dependent claims in 30 days"),
@@ -310,6 +371,9 @@ ALL_RULES = [
     Rule("R-013", "Disability Portal Critical Illness", "INFO", "CI claim from disability portal"),
     Rule("R-014", "Suspicious Banner Active", "BLOCK", "Member has suspicious banner"),
     Rule("R-015", "Family Claim Cluster", "FLAG", "3+ family members filed in 100 days"),
+    Rule("R-016", "Mobile Scan App Source", "FLAG", "Document submitted via mobile scan app"),
+    Rule("R-017", "Hospital Indemnity Stacking", "FLAG", "4+ claims same event, 2+ relationship types"),
+    Rule("R-018", "Document Visual Inconsistencies", "FLAG", "Font/alignment/color score < 0.7"),
 ]
 
 _RULE_FUNCS = [
@@ -328,6 +392,9 @@ _RULE_FUNCS = [
     r013_disability_portal_critical,
     r014_suspicious_banner,
     r015_family_claim_cluster,
+    r016_mobile_scan_app_source,
+    r017_hospital_indemnity_stacking,
+    r018_document_visual_inconsistencies,
 ]
 
 

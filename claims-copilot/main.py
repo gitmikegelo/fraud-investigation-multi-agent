@@ -1,4 +1,7 @@
-"""Prudential Supplemental Health Examiner Workflow Copilot - Main Entry Point"""
+"""Claims Examiner Workflow Copilot - Main Entry Point
+Supports: Prudential Supplemental Health | Zurich Travel Guard
+Set DOMAIN_MODE=travel to run Travel Guard. Default: supplemental.
+"""
 
 import os
 import sys
@@ -10,7 +13,13 @@ import pickle
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from domain_config import PRUDENTIAL_SUPPLEMENTAL_HEALTH, DomainConfig
+try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.env'), override=False)
+except ImportError:
+    pass
+
+from domain_config import PRUDENTIAL_SUPPLEMENTAL_HEALTH, ZURICH_TRAVEL_GUARD, DomainConfig
 from data.generate_supplemental import generate_supplemental_data, Claim
 from intelligence.rules_engine import run_rules_engine, RuleResult
 from intelligence.risk_scoring import score_claim, RiskBreakdown
@@ -19,6 +28,10 @@ from intelligence.document_vision import run_vision_document_checks, find_claim_
 from intelligence.entity_graph import build_supplemental_health_graph, detect_patterns, PatternResult
 from billing_rules.index import get_insurance_rules_index
 from cases import Case, CaseType, ClaimType, CasePriority, CaseStatus
+
+# Domain is locked to "travel". Supplemental code remains in the repo but can no
+# longer be activated via env/.env/.bat — the env var is intentionally ignored.
+DOMAIN_MODE = "travel"
 
 
 CACHE_VERSION = "v2_supplemental"
@@ -143,6 +156,7 @@ def initialize_data(force_regenerate: bool = False) -> DataContext:
         "addresses": data["addresses"],
         "policies": data["policies"],
         "workflow_tasks": data["workflow_tasks"],
+        "documents": data["documents"],
     }
 
     print(f"\n[2/7] Running rules engine on {len(claims)} claims...")
@@ -224,6 +238,126 @@ def initialize_data(force_regenerate: bool = False) -> DataContext:
     print("INITIALIZATION COMPLETE")
     print(f"  {len(case_queue)} claims | {high} HIGH | {med} MEDIUM | {low} LOW")
     print(f"  {len(patterns)} patterns | {graph.number_of_nodes()} graph nodes")
+    print("=" * 60)
+    return ctx
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TRAVEL GUARD INITIALIZATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+def initialize_travel_data(force_regenerate: bool = False) -> DataContext:
+    """Initialize Travel Guard domain data."""
+    cache_file = 'data_cache_v1_travel.pkl'
+
+    if not force_regenerate and os.path.exists(cache_file):
+        print("=" * 60)
+        print("ZURICH TRAVEL GUARD COPILOT - Loading Cache")
+        print("=" * 60)
+        try:
+            with open(cache_file, 'rb') as f:
+                ctx = pickle.load(f)
+            print(f"✅ Cache loaded ({len(ctx.case_queue)} claims)")
+            return ctx
+        except Exception as e:
+            print(f"⚠️ Cache load failed: {e}\nRegenerating...")
+
+    print("=" * 60)
+    print("ZURICH TRAVEL GUARD COPILOT - Initializing")
+    print("=" * 60)
+
+    config = ZURICH_TRAVEL_GUARD
+
+    from data.generate_travel import generate_travel_data, TravelClaim
+    from intelligence.rules_engine_travel import run_travel_rules_engine
+    from intelligence.risk_scoring_travel import score_travel_claim
+
+    print("\n[1/5] Generating travel insurance data...")
+    data = generate_travel_data()
+    claims = data["claims"]
+
+    # Build context dict for rules/scoring
+    context_dict = {
+        "claims": claims,
+        "travelers": data["travelers"],
+        "companions": data["companions"],
+        "destinations": data["destinations"],
+        "airlines": data["airlines"],
+        "hotels": data["hotels"],
+        "providers": data["providers"],
+        "policies": data["policies"],
+        "bookings": data["bookings"],
+        "flights": data["flights"],
+        "workflow_tasks": data["workflow_tasks"],
+        "documents": data["documents"],
+        "travel_agents": data["travel_agents"],
+    }
+
+    print(f"\n[2/5] Running travel rules engine on {len(claims)} claims...")
+    claim_rules = {}
+    for claim in claims:
+        results = run_travel_rules_engine(claim, context_dict)
+        claim_rules[claim.claim_id] = results
+    triggered_count = sum(1 for rules in claim_rules.values() for r in rules if r.triggered)
+    print(f"  → {triggered_count} total rule triggers across all claims")
+
+    print(f"\n[3/5] Scoring claims...")
+    claim_risk_scores = {}
+    for claim in claims:
+        score = score_travel_claim(claim, context_dict, claim_rules.get(claim.claim_id, []))
+        claim_risk_scores[claim.claim_id] = score
+    high = sum(1 for s in claim_risk_scores.values() if s.tier == "HIGH")
+    med = sum(1 for s in claim_risk_scores.values() if s.tier == "MEDIUM")
+    low = sum(1 for s in claim_risk_scores.values() if s.tier == "LOW")
+    print(f"  → HIGH: {high}, MEDIUM: {med}, LOW: {low}")
+
+    print(f"\n[4/5] Building case queue...")
+    from case_queue_travel import build_travel_case_queue
+    case_queue = build_travel_case_queue(claims, claim_risk_scores, claim_rules, data)
+    print(f"  → {len(case_queue)} cases in queue")
+
+    # Document analysis (simplified — no vision for travel)
+    claim_doc_results = {}
+    for doc in data["documents"]:
+        claim_doc_results[doc.claim_id] = []  # Placeholder
+
+    print(f"\n[5/5] Complete.")
+
+    # Build a minimal graph (reuse supplemental graph structure concept)
+    graph = nx.DiGraph()
+    for t in data["travelers"]:
+        graph.add_node(t.traveler_id, entity_type="traveler", name=t.full_name)
+    for d in data["destinations"]:
+        graph.add_node(d.destination_id, entity_type="destination", name=f"{d.city}, {d.country}")
+    for c in claims:
+        if c.destination_id:
+            graph.add_edge(c.traveler_id, c.destination_id, relationship="TRAVELED_TO", claim_id=c.claim_id)
+        if c.provider_id:
+            graph.add_edge(c.traveler_id, c.provider_id, relationship="TREATED_BY", claim_id=c.claim_id)
+
+    ctx = DataContext(
+        domain_config=config,
+        supplemental_data=data,
+        supplemental_claims=claims,
+        supplemental_graph=graph,
+        detected_patterns=[],
+        case_queue=case_queue,
+        claim_rules=claim_rules,
+        claim_risk_scores=claim_risk_scores,
+        claim_doc_results=claim_doc_results,
+    )
+
+    print("\n💾 Saving cache...")
+    try:
+        with open(cache_file, 'wb') as f:
+            pickle.dump(ctx, f)
+        print(f"✅ Cached to {cache_file}")
+    except Exception as e:
+        print(f"⚠️ Cache save failed: {e}")
+
+    print("\n" + "=" * 60)
+    print("TRAVEL GUARD INITIALIZATION COMPLETE")
+    print(f"  {len(case_queue)} claims | {high} HIGH | {med} MEDIUM | {low} LOW")
     print("=" * 60)
     return ctx
 

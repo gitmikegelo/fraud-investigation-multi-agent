@@ -83,7 +83,7 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
           }}>← Queue</button>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#818cf8', fontFamily: 'ui-monospace, monospace' }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-blue)', fontFamily: 'ui-monospace, monospace' }}>
                 {caseSummary?.case_id || caseId}
               </span>
               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>
@@ -91,7 +91,7 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
               </span>
               <span style={{
                 fontSize: 10, padding: '2px 8px', borderRadius: 10,
-                background: 'rgba(99,102,241,0.12)', color: '#818cf8', fontWeight: 600,
+                background: 'var(--c-accent-soft)', color: 'var(--c-accent)', fontWeight: 600,
               }}>
                 {caseSummary?.claim_type?.replace('_', ' ') || caseType}
               </span>
@@ -119,8 +119,8 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
         {(ruleCount > 0 || taskCount > 0) && (
           <div style={{
             marginTop: 8, padding: '6px 12px', borderRadius: 8,
-            background: ruleCount > 0 ? 'rgba(239,68,68,0.06)' : 'rgba(99,102,241,0.06)',
-            border: `1px solid ${ruleCount > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(99,102,241,0.15)'}`,
+            background: ruleCount > 0 ? 'rgba(239,68,68,0.06)' : 'var(--c-accent-faint)',
+            border: `1px solid ${ruleCount > 0 ? 'rgba(239,68,68,0.15)' : 'var(--c-accent-soft)'}`,
             fontSize: 11, color: 'var(--c-text-dim)', display: 'flex', gap: 16,
           }}>
             {ruleCount > 0 && <span>🚩 {ruleCount} rules triggered</span>}
@@ -155,10 +155,10 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
         {isThinking && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
-            background: 'rgba(99,102,241,0.06)', borderRadius: 12, alignSelf: 'flex-start',
+            background: 'var(--c-accent-faint)', borderRadius: 12, alignSelf: 'flex-start',
           }}>
-            <span className="animate-pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: '#6366f1' }} />
-            <span style={{ fontSize: 12, color: '#818cf8', fontStyle: 'italic' }}>Copilot is thinking…</span>
+            <span className="animate-pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-accent)' }} />
+            <span style={{ fontSize: 12, color: 'var(--c-accent)', fontStyle: 'italic' }}>Copilot is thinking…</span>
           </div>
         )}
 
@@ -178,7 +178,7 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
             color: 'var(--c-text-dim)', cursor: (isThinking || checklistRunning) ? 'not-allowed' : 'pointer',
             opacity: (isThinking || checklistRunning) ? 0.5 : 1, transition: 'all 0.12s',
           }}
-          onMouseEnter={e => { if (!isThinking && !checklistRunning) e.currentTarget.style.borderColor = '#6366f1' }}
+          onMouseEnter={e => { if (!isThinking && !checklistRunning) e.currentTarget.style.borderColor = 'var(--c-accent)' }}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--c-border)'}
           >
             {c.label}
@@ -206,14 +206,15 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
             outline: 'none', fontFamily: 'inherit', lineHeight: 1.4,
             minHeight: 40, maxHeight: 120,
           }}
-          onFocus={e => e.target.style.borderColor = '#6366f1'}
+          onFocus={e => e.target.style.borderColor = 'var(--c-accent)'}
           onBlur={e => e.target.style.borderColor = 'var(--c-border)'}
         />
         <button onClick={handleSend} disabled={isThinking || !input.trim()} style={{
-          padding: '10px 20px', borderRadius: 10, border: 'none',
-          background: (isThinking || !input.trim()) ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.85)',
-          color: (isThinking || !input.trim()) ? '#6366f1' : '#fff',
-          fontSize: 13, fontWeight: 600, cursor: (isThinking || !input.trim()) ? 'not-allowed' : 'pointer',
+          padding: '10px 22px', borderRadius: 'var(--r-btn)', border: 'none',
+          background: (isThinking || !input.trim()) ? 'var(--c-accent-soft)' : 'linear-gradient(90deg, #a100ff, #d6298a)',
+          color: (isThinking || !input.trim()) ? 'var(--c-accent)' : '#fff',
+          fontSize: 12, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
+          cursor: (isThinking || !input.trim()) ? 'not-allowed' : 'pointer',
           transition: 'all 0.15s', flexShrink: 0,
         }}>
           Send
@@ -242,8 +243,8 @@ function MessageBubble({ msg, onNavigateToDossier }) {
     return (
       <div style={{ alignSelf: 'flex-start', maxWidth: '80%' }}>
         <button onClick={() => setToolOpen(!toolOpen)} style={{
-          fontSize: 11, color: '#818cf8', background: 'rgba(99,102,241,0.06)',
-          border: '1px solid rgba(99,102,241,0.15)', borderRadius: 8,
+          fontSize: 11, color: 'var(--c-accent)', background: 'var(--c-accent-faint)',
+          border: '1px solid var(--c-accent-soft)', borderRadius: 8,
           padding: '5px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
         }}>
           <span style={{ fontSize: 10 }}>🔧</span>
@@ -252,7 +253,7 @@ function MessageBubble({ msg, onNavigateToDossier }) {
         </button>
         {toolOpen && (
           <div style={{
-            marginTop: 4, padding: '8px 12px', background: 'rgba(99,102,241,0.04)',
+            marginTop: 4, padding: '8px 12px', background: 'var(--c-accent-faint)',
             borderRadius: 8, fontSize: 11, color: 'var(--c-text-dim)',
             fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre-wrap',
           }}>
@@ -274,15 +275,15 @@ function MessageBubble({ msg, onNavigateToDossier }) {
     <div style={{ alignSelf: isAnalyst ? 'flex-end' : 'flex-start', maxWidth: '80%' }}>
       <div style={{
         fontSize: 10, fontWeight: 600, marginBottom: 3,
-        color: isAnalyst ? '#818cf8' : '#64748b',
+        color: isAnalyst ? 'var(--c-accent)' : 'var(--c-text-dim)',
         textAlign: isAnalyst ? 'right' : 'left',
       }}>
         {isAnalyst ? 'You' : 'Copilot'}
       </div>
       <div style={{
         padding: '10px 14px', borderRadius: 12,
-        background: isAnalyst ? 'rgba(99,102,241,0.12)' : 'var(--c-surface2)',
-        border: isAnalyst ? '1px solid rgba(99,102,241,0.2)' : '1px solid var(--c-border)',
+        background: isAnalyst ? 'var(--c-accent-soft)' : 'var(--c-surface2)',
+        border: isAnalyst ? '1px solid var(--c-accent-soft)' : '1px solid var(--c-border)',
         color: 'var(--c-text)', fontSize: 13, lineHeight: 1.55,
       }}>
         {isAnalyst ? (
@@ -298,13 +299,13 @@ function MessageBubble({ msg, onNavigateToDossier }) {
           onClick={onNavigateToDossier}
           style={{
             marginTop: 8, display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: 12, fontWeight: 600, padding: '7px 16px', borderRadius: 8,
-            background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)',
-            color: '#818cf8', cursor: 'pointer', transition: 'all 0.15s', width: '100%',
-            justifyContent: 'center',
+            fontSize: 12, fontWeight: 600, padding: '7px 16px', borderRadius: 'var(--r-btn)',
+            background: 'transparent', border: '1px solid var(--c-accent)',
+            color: 'var(--c-accent)', cursor: 'pointer', transition: 'all 0.15s', width: '100%',
+            justifyContent: 'center', textTransform: 'uppercase', letterSpacing: '0.03em',
           }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.22)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.12)' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--c-accent-soft)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
         >
           <svg width="13" height="13" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 2a1.5 1.5 0 011.5-1.5H10L13 4v8.5A1.5 1.5 0 0111.5 14h-7A1.5 1.5 0 013 12.5V2z"/>
@@ -322,7 +323,7 @@ const STATUS_CONFIG = {
   pass:         { icon: '✓', color: '#22c55e', bg: 'rgba(34,197,94,0.10)',  border: 'rgba(34,197,94,0.25)',  label: 'Passed' },
   fail:         { icon: '✕', color: '#ef4444', bg: 'rgba(239,68,68,0.10)',  border: 'rgba(239,68,68,0.25)',  label: 'Failed' },
   needs_review: { icon: '!', color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.25)', label: 'Review' },
-  running:      { icon: '◌', color: '#818cf8', bg: 'rgba(99,102,241,0.10)', border: 'rgba(99,102,241,0.25)', label: 'Running' },
+  running:      { icon: '◌', color: '#a100ff', bg: 'rgba(161,0,255,0.10)', border: 'rgba(161,0,255,0.25)', label: 'Running' },
   pending:      { icon: '○', color: '#64748b', bg: 'rgba(100,116,139,0.06)',border: 'rgba(100,116,139,0.12)',label: 'Pending' },
   error:        { icon: '⚠', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)',   label: 'Error' },
 }
@@ -353,14 +354,14 @@ function ChecklistCard({ msg, onStartAutoScan }) {
         {/* Card header */}
         <div style={{
           padding: '14px 18px 12px',
-          background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(59,130,246,0.06) 100%)',
+          background: 'linear-gradient(135deg, rgba(161,0,255,0.07) 0%, rgba(41,98,255,0.06) 100%)',
           borderBottom: '1px solid var(--c-border)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{
               width: 28, height: 28, borderRadius: 8,
-              background: 'rgba(99,102,241,0.15)',
+              background: 'var(--c-accent-soft)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 14,
             }}>
@@ -411,9 +412,9 @@ function ChecklistCard({ msg, onStartAutoScan }) {
                     padding: '10px 18px',
                     cursor: hasFindings && isDone ? 'pointer' : 'default',
                     transition: 'background 0.15s',
-                    background: isExpanded ? 'rgba(99,102,241,0.04)' : 'transparent',
+                    background: isExpanded ? 'var(--c-accent-faint)' : 'transparent',
                   }}
-                  onMouseEnter={e => { if (hasFindings && isDone) e.currentTarget.style.background = 'rgba(99,102,241,0.04)' }}
+                  onMouseEnter={e => { if (hasFindings && isDone) e.currentTarget.style.background = 'var(--c-accent-faint)' }}
                   onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent' }}
                 >
                   {/* Status icon */}
@@ -476,7 +477,7 @@ function ChecklistCard({ msg, onStartAutoScan }) {
                 {isExpanded && hasFindings && (
                   <div style={{
                     margin: '0 18px 8px 56px', padding: '8px 12px',
-                    background: 'rgba(99,102,241,0.03)',
+                    background: 'var(--c-accent-faint)',
                     borderRadius: 8, borderLeft: `2px solid ${cfg.color}`,
                   }}>
                     {step.findings.map((f, fi) => (
@@ -493,12 +494,12 @@ function ChecklistCard({ msg, onStartAutoScan }) {
                         style={{
                           marginTop: 8, padding: '6px 12px', display: 'inline-flex',
                           alignItems: 'center', gap: 6, cursor: 'pointer',
-                          background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)',
+                          background: 'var(--c-blue-soft)', border: '1px solid rgba(41,98,255,0.2)',
                           borderRadius: 8, fontSize: 11, fontWeight: 600,
-                          color: '#3b82f6', transition: 'all 0.15s',
+                          color: 'var(--c-blue)', transition: 'all 0.15s',
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.15)' }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.08)' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(41,98,255,0.15)' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'var(--c-blue-soft)' }}
                       >
                         🔍 View Source Document
                       </div>
@@ -523,7 +524,7 @@ function ChecklistCard({ msg, onStartAutoScan }) {
           <div style={{
             padding: '12px 18px',
             borderTop: '1px solid var(--c-border)',
-            background: 'linear-gradient(135deg, rgba(99,102,241,0.04) 0%, transparent 100%)',
+            background: 'linear-gradient(135deg, var(--c-accent-faint) 0%, transparent 100%)',
             display: 'flex', gap: 16, alignItems: 'center',
           }}>
             {summary.passed > 0 && (
@@ -553,15 +554,15 @@ function ChecklistCard({ msg, onStartAutoScan }) {
             <button
               onClick={() => onStartAutoScan({ steps, summary })}
               style={{
-                width: '100%', padding: '10px 16px', borderRadius: 10,
+                width: '100%', padding: '11px 16px', borderRadius: 'var(--r-btn)',
                 border: 'none', cursor: 'pointer',
-                background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-                color: '#fff', fontSize: 13, fontWeight: 700,
+                background: 'linear-gradient(90deg, #a100ff, #d6298a)',
+                color: '#fff', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(99,102,241,0.3)',
+                transition: 'all 0.2s', boxShadow: '0 2px 10px rgba(161,0,255,0.28)',
               }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.4)' }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(99,102,241,0.3)' }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(161,0,255,0.36)' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 10px rgba(161,0,255,0.28)' }}
             >
               <svg width="14" height="14" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M1 4V1.5A.5.5 0 011.5 1H4"/><path d="M11 1h2.5a.5.5 0 01.5.5V4"/>

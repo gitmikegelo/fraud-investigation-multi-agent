@@ -6,6 +6,7 @@ from datetime import datetime
 
 class CaseType(str, Enum):
     SUPPLEMENTAL_HEALTH = "supplemental_health"
+    TRAVEL_GUARD = "travel_guard"
 
 
 class ClaimType(str, Enum):
@@ -13,6 +14,12 @@ class ClaimType(str, Enum):
     ACCIDENT = "accident"
     HOSPITAL_INDEMNITY = "hospital_indemnity"
     CRITICAL_ILLNESS = "critical_illness"
+    # Travel Guard types
+    TRIP_CANCELLATION = "trip_cancellation"
+    TRIP_INTERRUPTION = "trip_interruption"
+    MEDICAL_EMERGENCY = "medical_emergency"
+    BAGGAGE_LOSS = "baggage_loss"
+    TRAVEL_DELAY = "travel_delay"
 
 
 class CasePriority(str, Enum):

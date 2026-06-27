@@ -61,9 +61,9 @@ This system is built around one core principle: **augment the examiner, don't re
 
 ---
 
-### 2. LangGraph 3-Node State Machine (Not a Simple Chain)
+### 2. LangGraph 3-Node State Machine (Standalone Investigation Runner)
 
-**Decision:** The agent uses a LangGraph `StateGraph` with three specialized nodes, not a single ReAct loop.
+**Decision:** A standalone investigation runner (`run_investigation()` in `agents/graph.py`) uses a LangGraph `StateGraph` with three specialized nodes. The live copilot chat, however, uses a flat `create_react_agent` — not the StateGraph. The graph is a separate deep-investigation path, not wired into the `/ws/chat` API.
 
 ```
                     ┌─────────────┐
@@ -93,7 +93,7 @@ class InvestigationState(TypedDict):
     compile_loop_count: int           # Tracks dossier rejection cycles
 ```
 
-**Why not a single agent with all 16 tools?**
+**Why the graph exists alongside the copilot:**
 - Investigation tools and dossier tools have different failure modes. Investigation tools *gather* — they should run speculatively. Dossier tools *conclude* — they should only run when evidence is sufficient.
 - The orchestrator node acts as a **quality gate**: it checks `evidence_sufficient` before routing to the dossier node. If the dossier node rejects (insufficient evidence), it routes *back* to investigation for deeper analysis.
 - This creates a natural **self-healing loop**: investigate → assess → reject → investigate deeper → assess again → accept → compile.
@@ -126,10 +126,12 @@ def check_eligibility(
   - Tool outputs are reproducible and testable
   - The LLM can't hallucinate data — it can only work with what the tools return
   - Each tool call is logged (`_tool_log`), creating an audit trail
-- Tools are grouped by concern:
+- Tools are grouped by concern in the live copilot (`ALL_SUPPLEMENTAL_TOOLS`):
   - **7 Fraud tools** — eligibility, family claims, documents, dependents, provider patterns, inconsistencies, related claims
-  - **5 Dossier tools** — evidence assessment, regulatory search, similar cases, recovery estimation, dossier compilation
-  - **4 Policy/Workflow tools** — policy details, state rules, alerts, coverage matching
+  - **2 Workflow tools** — workflow tasks, contact history
+  - **4 Policy tools** — policy details, state rules, policy alerts, coverage matching
+  - **3 Universal tools** — explain risk score, run fraud checklist, compile dossier
+- The standalone graph runner also uses 5 dedicated dossier tools (`tools_dossier.py`): evidence assessment, regulatory search, similar cases, recovery estimation, dossier compilation — only `compile_dossier` overlaps with the live copilot.
 
 **Context injection:**
 ```python
@@ -229,16 +231,16 @@ generate_supplemental_data()           # Synthetic data
 
 ### 7. WebSocket for Real-Time Copilot Chat
 
-**Decision:** The copilot chat uses WebSocket (`/ws/chat/{case_id}`), not REST polling.
+**Decision:** The copilot chat uses WebSocket (`/ws/chat/{claim_id}`), not REST polling.
 
 ```python
-@app.websocket("/ws/chat/{case_id}")
-async def websocket_endpoint(websocket: WebSocket, case_id: str):
+@app.websocket("/ws/chat/{claim_id}")
+async def chat_websocket(websocket: WebSocket, claim_id: str):
     await websocket.accept()
-    session = get_or_create_session(case_id, ...)
+    session = get_or_create_session(claim_id, ...)
     while True:
         message = await websocket.receive_text()
-        response = handle_analyst_message_sync(case_id, message)
+        response = handle_analyst_message_sync(claim_id, message)
         await websocket.send_json({"response": response})
 ```
 
@@ -257,11 +259,14 @@ async def websocket_endpoint(websocket: WebSocket, case_id: str):
 class CopilotSession:
     session_id: str
     case_id: str
-    claim_type: str
+    case_type: str
     subject_id: str
+    subject_name: str
+    flag_reason: str = ""
     messages: List[BaseMessage]       # Full LangChain message history
     tools_called: List[str]           # Audit trail of tool invocations
     checklist_state: Dict             # Step completion tracking
+    created_at: str                   # ISO timestamp, auto-set on creation
 ```
 
 **Why:**

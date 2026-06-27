@@ -69,6 +69,8 @@ class Facility:
     type: str  # hospital, clinic, urgent_care, surgery_center
     state: str
     is_rural: bool = False
+    releasepoint_enrolled: bool = False
+    known_ehr_system: Optional[str] = None
 
 
 @dataclass
@@ -111,6 +113,15 @@ class DocumentMetadata:
     metadata_hash: str = ""
     duplicate_of: Optional[str] = None
     tampering_indicators: List[str] = field(default_factory=list)
+    # New SCHEMA fields
+    source_type: str = "PROVIDER_PORTAL"  # RELEASEPOINT | PROVIDER_PORTAL | PROVIDER_FAX | MEMBER_UPLOAD_PDF | MOBILE_SCAN | UNKNOWN
+    font_consistency_score: float = 1.0   # 0.0 - 1.0
+    alignment_score: float = 1.0          # 0.0 - 1.0
+    color_consistency_score: float = 1.0  # 0.0 - 1.0
+    header_content_match: bool = True
+    metadata_app_signature: Optional[str] = None  # "CamScanner", "Adobe Scan", etc.
+    releasepoint_status: str = "NOT_REQUESTED"  # NOT_REQUESTED | REQUESTED | NOT_YET_PRINTED | RECORDS_RECEIVED | CONFIRMED_MATCH | CONFIRMED_DISCREPANT
+    releasepoint_request_id: Optional[str] = None  # "RP 15751837"
 
 
 @dataclass
@@ -151,6 +162,12 @@ class Claim:
     contact_count: int = 1
     is_resubmission: bool = False
     original_claim_id: Optional[str] = None
+    # New SCHEMA fields
+    benefit_type: str = ""               # HOSPITAL_ADMISSION | HOSPITAL_CONFINEMENT | URGENT_CARE_VISIT | etc.
+    relationship_type: str = "SELF"      # SELF | POLICYHOLDER | BENEFICIARY | INSURED
+    batch_claim_id: Optional[str] = None # Groups related stacked claims
+    stacked_with: List[str] = field(default_factory=list)
+    related_claim_ids: List[str] = field(default_factory=list)
 
 
 # ── Name / Data Pools ────────────────────────────────────────────────────────
@@ -395,15 +412,21 @@ def _generate_providers(count: int, facilities: List[Facility]) -> List[Provider
 
 
 def _generate_facilities() -> List[Facility]:
+    EHR_SYSTEMS = ["Epic", "Cerner", "Meditech", "CPSI", None]
     facilities = []
     for i, (name, ftype) in enumerate(FACILITY_NAMES):
         state = random.choice(STATES)
+        is_rural = (i >= 12)
+        # Hospitals and urgent care that are not rural are enrolled in ReleasePoint
+        rp_enrolled = ftype in ("hospital", "urgent_care") and not is_rural
         facilities.append(Facility(
             facility_id=f"FAC-{i+1:03d}",
             name=name,
             type=ftype,
             state=state,
-            is_rural=(i >= 12),  # Last few are rural
+            is_rural=is_rural,
+            releasepoint_enrolled=rp_enrolled,
+            known_ehr_system=random.choice(EHR_SYSTEMS) if rp_enrolled else None,
         ))
     return facilities
 
@@ -694,6 +717,83 @@ def _inject_fraud_scenarios(
         hi_claims[7].fraud_scenario = "missing_headers"
         hi_claims[7].notes = "Medical records missing facility header and physician signature"
 
+    # ── FS-001: Falsified Discharge Summary (CamScanner / MOBILE_SCAN) ───────
+    fs001_candidates = [c for c in claims
+                        if c.claim_type == "hospital_indemnity"
+                        and c.fraud_scenario is None
+                        and c.false_positive_scenario is None][:12]
+    for c in fs001_candidates:
+        c.fraud_scenario = "fs_001_camscanner"
+        c.benefit_type = "HOSPITAL_ADMISSION"
+        c.relationship_type = random.choice(["SELF", "POLICYHOLDER"])
+        c.diagnosis_codes = random.sample(["J44", "J96", "I50", "J18", "N17"], k=2)
+        c.claim_amount = round(random.uniform(500, 2000), 2)
+        c.notes = "Fraud alert — CamScanner document detected. Request MR via ReleasePoint to confirm validity."
+
+    # ── FS-002: Indemnity Stacking — Legitimate (FALSE POSITIVE) ─────────────
+    female_members = [m for m in members
+                      if m.gender == "F" and not m.suspicious_banner
+                      and m.termination_date is None]
+    stacking_member = random.choice(female_members[:30]) if len(female_members) >= 30 else (
+        female_members[0] if female_members else members[30]
+    )
+    fs002_pool = [c for c in claims
+                  if c.claim_type == "hospital_indemnity"
+                  and c.fraud_scenario is None
+                  and c.false_positive_scenario is None][:8]
+    if len(fs002_pool) >= 4:
+        batch_id = f"BC-2026-{random.randint(1000000, 9999999)}"
+        rel_types_cycle = ["SELF", "POLICYHOLDER", "BENEFICIARY", "INSURED",
+                           "SELF", "POLICYHOLDER", "BENEFICIARY", "INSURED"]
+        base_dos = _rand_date("2026-01-01", "2026-02-28")
+        for i, c in enumerate(fs002_pool):
+            c.member_id = stacking_member.member_id
+            c.false_positive_scenario = "fs_002_stacking"
+            c.batch_claim_id = batch_id
+            c.benefit_type = "HOSPITAL_INDEMNITY"
+            c.relationship_type = rel_types_cycle[i]
+            c.diagnosis_codes = ["O30", "Z38"]
+            c.claim_amount = round(random.uniform(200, 1000), 2)
+            c.date_of_service = base_dos
+            c.date_filed = _rand_date(base_dos, "2026-03-15")
+            c.stacked_with = [fc.claim_id for fc in fs002_pool if fc.claim_id != c.claim_id]
+            c.notes = "Member gave birth to twins — stacking is legitimate for multiple birth event."
+
+    # ── FS-003: Manipulated Urgent Care Records ───────────────────────────────
+    fs003_pool = [c for c in claims
+                  if c.claim_type == "wellness"
+                  and c.fraud_scenario is None
+                  and c.false_positive_scenario is None][:6]
+    for c in fs003_pool:
+        c.fraud_scenario = "fs_003_manipulated"
+        c.benefit_type = "URGENT_CARE_VISIT"
+        c.relationship_type = "SELF"
+        c.diagnosis_codes = random.sample(["J06", "R05", "J02", "R50", "A08"], k=2)
+        c.claim_amount = round(random.uniform(100, 500), 2)
+        c.notes = "Inconsistencies with font color, quality. Accept records only via ReleasePoint."
+
+    # ── FS-004: High-Volume Legitimate — Chronic Condition (FALSE POSITIVE) ───
+    chronic_candidates = [m for m in members
+                          if not m.suspicious_banner and m.termination_date is None
+                          and m.member_id != stacking_member.member_id]
+    chronic_member = chronic_candidates[80] if len(chronic_candidates) > 80 else chronic_candidates[-1]
+    fs004_pool = [c for c in claims
+                  if c.claim_type == "hospital_indemnity"
+                  and c.fraud_scenario is None
+                  and c.false_positive_scenario is None][:12]
+    chronic_dos_start = datetime(2026, 1, 1)
+    for i, c in enumerate(fs004_pool):
+        c.member_id = chronic_member.member_id
+        c.false_positive_scenario = "fs_004_chronic"
+        c.benefit_type = "HOSPITAL_CONFINEMENT"
+        c.relationship_type = "SELF"
+        c.diagnosis_codes = random.sample(["Z51", "D70", "C50", "C34", "C18"], k=2)
+        c.claim_amount = round(random.uniform(200, 1000), 2)
+        dos = (chronic_dos_start + timedelta(days=i * 7 + random.randint(0, 5))).strftime("%Y-%m-%d")
+        c.date_of_service = dos
+        c.date_filed = _rand_date(dos, "2026-03-15")
+        c.notes = "Chronic condition (oncology). Multiple claims over 3 months — after medical record review, no fraud found."
+
 
 def _inject_false_positives(
     claims: List[Claim],
@@ -774,24 +874,85 @@ def _generate_document_metadata(claims: List[Claim], providers: List[Provider]) 
         prov = provider_map.get(claim.provider_id)
         prov_name = prov.name if prov else "Unknown Provider"
 
+        # Defaults — clean document
         has_header = True
         has_signature = True
         has_date = True
         fmt_type = random.choice(["digital", "fax", "scan"])
         resolution = "standard"
         tampering = []
+        source_type = "PROVIDER_PORTAL"
+        font_score = round(random.uniform(0.85, 1.0), 2)
+        align_score = round(random.uniform(0.85, 1.0), 2)
+        color_score = round(random.uniform(0.85, 1.0), 2)
+        header_match = True
+        app_sig = None
+        rp_status = "NOT_REQUESTED"
+        rp_id = None
+        doc_type = random.choice(["medical_record", "invoice", "receipt", "discharge_summary"])
+        filename = f"{doc_type}_{claim.claim_id}.pdf"
 
+        # Existing scenario overrides
         if claim.fraud_scenario == "tampered_records":
             tampering = ["metadata_edit_after_creation", "inconsistent_timestamps", "font_mismatch"]
             has_date = False
+            source_type = "MEMBER_UPLOAD_PDF"
+            font_score = round(random.uniform(0.3, 0.5), 2)
+            align_score = round(random.uniform(0.4, 0.6), 2)
+            color_score = round(random.uniform(0.3, 0.5), 2)
+            header_match = False
         elif claim.fraud_scenario == "missing_headers":
             has_header = False
             has_signature = False
             fmt_type = "fax"
             resolution = "low"
+            source_type = "MEMBER_FAX"
         elif claim.false_positive_scenario == "rural_bw_scan":
             fmt_type = "fax"
             resolution = "low"
+            source_type = "PROVIDER_FAX"
+        # New FS scenario overrides
+        elif claim.fraud_scenario == "fs_001_camscanner":
+            source_type = "MOBILE_SCAN"
+            app_sig = "CamScanner"
+            fmt_type = "scan"
+            resolution = "low"
+            doc_type = "discharge_summary"
+            font_score = round(random.uniform(0.3, 0.6), 2)
+            align_score = round(random.uniform(0.4, 0.7), 2)
+            color_score = round(random.uniform(0.35, 0.6), 2)
+            header_match = False
+            rp_status = "REQUESTED"
+            rp_id = f"RP {random.randint(10000000, 99999999)}"
+            dos_parts = claim.date_of_service.replace("-", "-")
+            filename = f"CamScanner_{dos_parts}_{random.randint(10,99)}.{random.randint(10,99)}_1.jpeg"
+        elif claim.false_positive_scenario == "fs_002_stacking":
+            source_type = "PROVIDER_PORTAL"
+            fmt_type = "digital"
+            font_score = round(random.uniform(0.88, 1.0), 2)
+            align_score = round(random.uniform(0.90, 1.0), 2)
+            color_score = round(random.uniform(0.88, 1.0), 2)
+            header_match = True
+        elif claim.fraud_scenario == "fs_003_manipulated":
+            source_type = "MEMBER_UPLOAD_PDF"
+            fmt_type = "scan"
+            doc_type = "medical_record"
+            font_score = round(random.uniform(0.3, 0.5), 2)
+            align_score = round(random.uniform(0.3, 0.6), 2)
+            color_score = round(random.uniform(0.4, 0.6), 2)
+            header_match = False
+            rp_status = "REQUESTED"
+            rp_id = f"RP {random.randint(10000000, 99999999)}"
+            safe_name = prov_name.replace("Dr. ", "").replace(" ", "_")
+            filename = f"Notes_from_care_team_{safe_name}_{claim.date_of_service}.pdf"
+        elif claim.false_positive_scenario == "fs_004_chronic":
+            source_type = "PROVIDER_PORTAL"
+            fmt_type = "digital"
+            font_score = round(random.uniform(0.85, 1.0), 2)
+            align_score = round(random.uniform(0.85, 1.0), 2)
+            color_score = round(random.uniform(0.85, 1.0), 2)
+            header_match = True
+            rp_status = "RECORDS_RECEIVED"
 
         h = hashlib.md5(f"{claim.claim_id}-{claim.date_of_service}".encode()).hexdigest()[:16]
         dup_of = None
@@ -801,7 +962,7 @@ def _generate_document_metadata(claims: List[Claim], providers: List[Provider]) 
         docs.append(DocumentMetadata(
             doc_id=f"DOC-{claim.claim_id}",
             claim_id=claim.claim_id,
-            doc_type=random.choice(["medical_record", "invoice", "receipt", "discharge_summary"]),
+            doc_type=doc_type,
             provider_name=prov_name,
             date_of_service=claim.date_of_service,
             received_date=claim.date_filed,
@@ -813,7 +974,41 @@ def _generate_document_metadata(claims: List[Claim], providers: List[Provider]) 
             metadata_hash=h,
             duplicate_of=dup_of,
             tampering_indicators=tampering,
+            source_type=source_type,
+            font_consistency_score=font_score,
+            alignment_score=align_score,
+            color_consistency_score=color_score,
+            header_content_match=header_match,
+            metadata_app_signature=app_sig,
+            releasepoint_status=rp_status,
+            releasepoint_request_id=rp_id,
         ))
+
+        # FS-003: Add a second document (After Visit Summary) with its own scores
+        if claim.fraud_scenario == "fs_003_manipulated":
+            safe_name = prov_name.replace("Dr. ", "").replace(" ", "_")
+            docs.append(DocumentMetadata(
+                doc_id=f"DOC-{claim.claim_id}-2",
+                claim_id=claim.claim_id,
+                doc_type="discharge_summary",
+                provider_name=prov_name,
+                date_of_service=claim.date_of_service,
+                received_date=claim.date_filed,
+                has_header=True,
+                has_signature=True,
+                has_date=True,
+                format_type="scan",
+                resolution="low",
+                metadata_hash=hashlib.md5(f"{claim.claim_id}-2-avs".encode()).hexdigest()[:16],
+                source_type="MEMBER_UPLOAD_PDF",
+                font_consistency_score=round(random.uniform(0.4, 0.6), 2),
+                alignment_score=round(random.uniform(0.5, 0.7), 2),
+                color_consistency_score=round(random.uniform(0.4, 0.6), 2),
+                header_content_match=False,
+                releasepoint_status="REQUESTED",
+                releasepoint_request_id=f"RP {random.randint(10000000, 99999999)}",
+            ))
+
     return docs
 
 
@@ -935,7 +1130,7 @@ def generate_supplemental_data() -> Dict:
     TARGET_TODAY = 15
 
     # Priority claims that must appear in today's queue
-    priority_ids = {"WC-247"}  # hero case always visible today
+    priority_ids = {"WC-247", "HI-003"}  # hero cases always visible today
 
     # Pin 2-3 other high-signal fraud claims to today (skip termination_rush —
     # it's intentionally dated to 2026-03-14 to show the rush pattern)

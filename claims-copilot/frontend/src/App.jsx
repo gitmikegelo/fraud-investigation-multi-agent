@@ -82,7 +82,7 @@ export default function App() {
                 background: 'linear-gradient(90deg, #a100ff, #d6298a)',
                 WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
               }}>Claims Co-Pilot</div>
-              <div style={{ color: 'var(--c-text-muted)', fontSize: 10, marginTop: 1 }}>Zurich Travel Guard</div>
+              <div style={{ color: 'var(--c-text-muted)', fontSize: 10, marginTop: 1 }}>Car Insurance</div>
             </div>
           </div>
           <div style={{ height: 1, background: 'var(--c-sidebar-border)' }} />

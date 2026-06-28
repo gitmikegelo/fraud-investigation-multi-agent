@@ -7,7 +7,6 @@ import { useInvestigation } from '../hooks/useInvestigation'
 
 const PHASE_COLOR = {
   'Initializing':        '#a100ff',
-  'Initial Analysis':    '#a855f7',
   'Agent Orchestration': '#2962ff',
   'Investigating':       '#16a34a',
   'Compiling':           '#d97706',

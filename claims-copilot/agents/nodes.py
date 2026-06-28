@@ -118,24 +118,13 @@ def _safe_agent_invoke(agent, messages: list, agent_name: str, fallback_message:
             }
 
 try:
-    import os as _os
-    _DOMAIN_MODE = _os.getenv("DOMAIN_MODE", "travel")
-    if _DOMAIN_MODE == "travel":
-        from .prompts_investigation_travel import (
-            ORCHESTRATOR_PROMPT,
-            INVESTIGATION_PROMPT,
-            DOSSIER_PROMPT,
-        )
-        from .tools_investigation_travel import INVESTIGATION_TOOLS
-        from .tools_dossier_travel import DOSSIER_TOOLS, clear_tool_cache
-    else:
-        from .prompts import (
-            ORCHESTRATOR_PROMPT,
-            INVESTIGATION_PROMPT,
-            DOSSIER_PROMPT,
-        )
-        from .tools_investigation import INVESTIGATION_TOOLS
-        from .tools_dossier import DOSSIER_TOOLS, clear_tool_cache
+    from .prompts_investigation_car import (
+        ORCHESTRATOR_PROMPT,
+        INVESTIGATION_PROMPT,
+        DOSSIER_PROMPT,
+    )
+    from .tools_investigation_car import INVESTIGATION_TOOLS
+    from .tools_dossier_car import DOSSIER_TOOLS, clear_tool_cache
 except ImportError:
     ORCHESTRATOR_PROMPT = INVESTIGATION_PROMPT = DOSSIER_PROMPT = ""
     INVESTIGATION_TOOLS = DOSSIER_TOOLS = []

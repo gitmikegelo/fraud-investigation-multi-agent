@@ -1,10 +1,9 @@
 """
-Dossier Agent Tools (Travel) — 5 tools for evidence assessment and case compilation
-for Zurich Travel Guard. Mirrors agents/tools_dossier.py but with travel regulatory
-rules (TG-xxx), travel precedent cases, and a travel-themed dossier.
+Dossier Agent Tools (Car) — 5 tools for evidence assessment and case compilation
+for Car Insurance. Mirrors the travel dossier tools but with auto regulatory rules
+(AU-xxx), auto precedent cases, and an auto-themed dossier.
 """
 
-import re
 import json
 from typing import List, Dict, Annotated
 from datetime import datetime
@@ -52,12 +51,12 @@ def clear_tool_cache():
 
 
 # =========================================================================
-# 1.  assess_evidence  (domain-neutral; travel scheme keywords)
+# 1.  assess_evidence
 # =========================================================================
 def assess_evidence(
-    hypothesis: Annotated[str, "Suspected scheme (e.g. 'destination fraud ring', 'baggage padding')"],
+    hypothesis: Annotated[str, "Suspected scheme (e.g. 'inflated estimate', 'staged theft')"],
     evidence: Annotated[List[str], "List of evidence points gathered"],
-    scheme_pattern: Annotated[str, "Pattern: destination_fraud_ring, phantom_booking, baggage_padding, fabricated_delay, serial_claimer"],
+    scheme_pattern: Annotated[str, "Pattern: inflated_estimate, staged_theft, repair_shop_ring, serial_claimer, pre_existing_damage"],
 ) -> Dict:
     """
     Check if gathered evidence meets sufficiency criteria for escalation.
@@ -67,7 +66,6 @@ def assess_evidence(
     checks_passed, checks_failed, missing = [], [], []
     all_text = ' '.join(str(e).lower() for e in evidence)
 
-    # 1: multiple evidence points
     if len(evidence) >= 3:
         checks_passed.append("multiple_evidence_points")
     else:
@@ -75,56 +73,51 @@ def assess_evidence(
         missing.append(f"Need >= 3 independent evidence points (have {len(evidence)}). "
                        "Profile additional entities or compare claim amounts to peers.")
 
-    # 2: statistical significance
     stat_kw = ['z-score', 'z_score', 'z=', 'standard deviation', 'anomaly', 'peer',
-               'sigma', 'comparison', 'average', 'mean', 'risk_score', 'risk score']
+               'sigma', 'comparison', 'average', 'mean', 'risk_score', 'risk score', 'acv']
     if any(kw in all_text for kw in stat_kw):
         checks_passed.append("statistical_significance")
     else:
         checks_failed.append("statistical_significance")
         missing.append("Need statistical comparison to peers. Call compare_to_peers() on "
-                       "claim_amount, claim_count, or baggage_value and report the z-score.")
+                       "claim_amount or claim_count and report the z-score, or compare to vehicle ACV.")
 
-    # 3: temporal / pattern
-    temporal_kw = ['month', 'timeline', 'date', 'period', 'delay', 'spike', 'flight',
-                   'booking', 'trip', 'history', 'before', 'after', 'filed', 'pattern', 'trend']
+    temporal_kw = ['month', 'timeline', 'date', 'period', 'spike', 'incident',
+                   'effective', 'coverage', 'history', 'before', 'after', 'filed', 'pattern', 'trend']
     if any(kw in all_text for kw in temporal_kw):
         checks_passed.append("temporal_pattern")
     else:
         checks_failed.append("temporal_pattern")
-        missing.append("Need temporal analysis: compare claimed delay vs. flight tracking, "
-                       "booking dates vs. trip window, or filing dates relative to policy purchase.")
+        missing.append("Need temporal analysis: compare incident date vs. policy effective date, "
+                       "or claim filing dates relative to a coverage change.")
 
-    # 4: network (ring-type)
-    if any(kw in scheme_pattern.lower() for kw in ['ring', 'cluster', 'network', 'destination']):
-        net_kw = ['ring', 'connection', 'network', 'destination', 'provider', 'density',
+    if any(kw in scheme_pattern.lower() for kw in ['ring', 'cluster', 'network', 'shop']):
+        net_kw = ['ring', 'connection', 'network', 'shop', 'density',
                   'entities', 'relationship', 'linked', 'cluster', 'watchlist']
         if any(kw in all_text for kw in net_kw):
             checks_passed.append("network_evidence")
         else:
             checks_failed.append("network_evidence")
             missing.append("Need network analysis for a ring pattern. Call find_connections() on "
-                           "the target and find_ring() to surface destination/provider clusters.")
+                           "the target and find_ring() to surface repair-shop clusters.")
 
-    # 5: regulatory citation
-    rule_kw = ['rule', 'tg-0', 'r-0', 'regulation', 'violation', 'triggered', 'severity', 'policy']
+    rule_kw = ['rule', 'au-0', 'r-0', 'regulation', 'violation', 'triggered', 'severity', 'policy']
     if any(kw in all_text for kw in rule_kw):
         checks_passed.append("regulatory_citation")
     else:
         checks_failed.append("regulatory_citation")
         missing.append("Need regulatory context. Call search_regulatory_rules() to find "
-                       "applicable TG-001 through TG-010 travel rules.")
+                       "applicable AU-001 through AU-006 auto rules.")
 
-    # 6: document/photo integrity (doc/photo schemes)
-    if any(kw in scheme_pattern.lower() for kw in ['baggage', 'padding', 'document', 'photo', 'fabricat']):
-        doc_kw = ['photo', 'receipt', 'document', 'staged', 'metadata', 'manipulat',
-                  'watermark', 'screenshot', 'forged', 'altered', 'tampering']
+    if any(kw in scheme_pattern.lower() for kw in ['estimate', 'padding', 'document', 'photo', 'damage']):
+        doc_kw = ['photo', 'estimate', 'document', 'staged', 'metadata', 'manipulat',
+                  'damage', 'screenshot', 'forged', 'altered', 'tampering', 'acv']
         if any(kw in all_text for kw in doc_kw):
             checks_passed.append("document_evidence")
         else:
             checks_failed.append("document_evidence")
-            missing.append("Need evidence-image findings. Review the claim's photo/receipt "
-                           "vision checks (staged damage, manipulation, missing receipts).")
+            missing.append("Need evidence-image findings. Review the claim's damage-photo / estimate "
+                           "vision checks (staged damage, inflated line items, ACV mismatch).")
 
     critical = ["multiple_evidence_points", "statistical_significance", "temporal_pattern"]
     critical_passed = all(c in checks_passed for c in critical)
@@ -145,141 +138,91 @@ def assess_evidence(
 
 
 # =========================================================================
-# 2.  search_regulatory_rules  (travel rules)
+# 2.  search_regulatory_rules  (auto rules)
 # =========================================================================
 def search_regulatory_rules(
-    claim_types: Annotated[List[str], "Claim types (trip_cancellation, trip_interruption, medical_emergency, baggage_loss, travel_delay)"],
+    claim_types: Annotated[List[str], "Claim types (collision, comprehensive, theft, liability, medical_payments)"],
     context: Annotated[str, "Description of the suspected scheme"],
 ) -> List[Dict]:
     """
-    Search Zurich Travel Guard regulatory rules relevant to the case.
+    Search Car Insurance regulatory rules relevant to the case.
     Returns rules with section_id, title, summary, fraud_indicators, applicable_types.
     """
     _tool_log('search_regulatory_rules', f'Searching rules for types={claim_types}...')
 
     RULES = [
         {
-            "section_id": "TG-001",
-            "title": "Pre-Existing Condition / Coverage Window",
-            "summary": "Medical emergency claims with a date of incident shortly after policy purchase, "
-                       "or for declared-but-not-upgraded pre-existing conditions, require review.",
+            "section_id": "AU-001",
+            "title": "Coverage Period — Policy Effective After Incident",
+            "summary": "A policy whose effective date is after the claimed incident date is invalid "
+                       "for that incident. Backdated coverage claims must be denied.",
             "fraud_indicators": [
-                "Medical incident within 30 days of policy purchase",
-                "Diagnosis consistent with a pre-existing condition not declared",
-                "Maximum medical coverage purchased just before travel",
-            ],
-            "applicable_types": ["medical_emergency", "trip_cancellation", "trip_interruption"],
-        },
-        {
-            "section_id": "TG-002",
-            "title": "Booking Confirmation Requirement",
-            "summary": "Trip cancellation/interruption benefits require a verifiable confirmed booking. "
-                       "Claims with no airline/hotel confirmation must be denied or held.",
-            "fraud_indicators": [
-                "No confirmed flight or hotel booking on file",
-                "Booking reference cannot be verified with the airline/GDS",
-                "Cancellation claimed before any booking existed",
-            ],
-            "applicable_types": ["trip_cancellation", "trip_interruption"],
-        },
-        {
-            "section_id": "TG-003",
-            "title": "Destination Fraud Ring — Watchlisted Providers",
-            "summary": "Overseas medical claims from watchlisted or unverified providers in destinations "
-                       "with known coordinated fraud activity are flagged for ring investigation.",
-            "fraud_indicators": [
-                "Treating provider is on the fraud watchlist or unverified in-network",
-                "Destination flagged as a known fraud ring",
-                "Hospital bill far exceeds the destination's expected cost-per-day",
-                "Multiple travelers routed through the same overseas facility",
-            ],
-            "applicable_types": ["medical_emergency"],
-        },
-        {
-            "section_id": "TG-004",
-            "title": "Baggage Valuation — Outlier and Receipt Verification",
-            "summary": "Baggage claims must be substantiated by receipts/ownership proof. Claims several "
-                       "SD above peer value, or exceeding the policy baggage limit, require verification.",
-            "fraud_indicators": [
-                "Baggage claim value > 3x the peer average for the type",
-                "Exclusively luxury items with no purchase receipts",
-                "Claim amount exceeds the policy baggage coverage limit",
-                "Submitted damage photo shows staged or inconsistent damage",
-            ],
-            "applicable_types": ["baggage_loss"],
-        },
-        {
-            "section_id": "TG-005",
-            "title": "Flight Delay Verification — Tracking Consistency",
-            "summary": "Travel delay benefits require the claimed delay to match independent flight "
-                       "tracking (FlightStats/IATA). On-time flights reported as delayed are denied.",
-            "fraud_indicators": [
-                "Claimed delay hours conflict with flight-tracking records",
-                "Flight shows on-time departure but a multi-hour delay is claimed",
-                "No corroborating airport/airline delay documentation",
-            ],
-            "applicable_types": ["travel_delay"],
-        },
-        {
-            "section_id": "TG-006",
-            "title": "Policy Purchased After Event",
-            "summary": "A policy purchased after the claimed incident date is invalid for that incident.",
-            "fraud_indicators": [
-                "Policy purchase date is after the date of incident",
+                "Policy effective date is after the date of incident",
+                "Coverage upgraded immediately before the incident",
                 "Incident details known prior to coverage purchase",
             ],
-            "applicable_types": ["trip_cancellation", "trip_interruption", "medical_emergency",
-                                  "baggage_loss", "travel_delay"],
+            "applicable_types": ["collision", "comprehensive", "theft", "liability", "medical_payments"],
         },
         {
-            "section_id": "TG-007",
-            "title": "Serial Claimer — Benefit Harvesting",
-            "summary": "Travelers with repeated claims across trips, especially with a repetitive "
-                       "diagnosis/loss pattern, are flagged for benefit-harvesting review.",
+            "section_id": "AU-002",
+            "title": "Repair Estimate Requirement",
+            "summary": "Collision/comprehensive/liability benefits require a verifiable repair estimate. "
+                       "Claims with no estimate must be held pending documentation.",
             "fraud_indicators": [
-                "3+ claims by the same traveler in a short window",
-                "Repetitive diagnosis (always food poisoning / dehydration)",
-                "Claims always filed within a few days of trip start",
+                "No repair estimate on file for a damage claim",
+                "Estimate from an unverifiable or out-of-network shop",
+                "Line items inconsistent with the reported damage",
             ],
-            "applicable_types": ["medical_emergency", "trip_interruption", "baggage_loss", "travel_delay"],
+            "applicable_types": ["collision", "comprehensive", "liability"],
         },
         {
-            "section_id": "TG-008",
-            "title": "Airline Refund Double-Dip",
-            "summary": "Trip cancellation claims where the airline/hotel has already refunded the traveler "
-                       "constitute double recovery and must be offset.",
+            "section_id": "AU-003",
+            "title": "Repair-Shop Watchlist & Ring Detection",
+            "summary": "Estimates from watchlisted/out-of-network shops, especially shops linked to "
+                       "multiple high-value claims, are flagged for ring investigation.",
             "fraud_indicators": [
-                "Flight booking cancelled/refunded by the airline",
-                "Hotel issued a refund for the same dates being claimed",
+                "Repair shop is on the fraud watchlist or unverified",
+                "Single shop linked to many high-value claims",
+                "Estimate far above comparable repairs for the damage",
             ],
-            "applicable_types": ["trip_cancellation", "trip_interruption"],
+            "applicable_types": ["collision", "comprehensive", "liability"],
         },
         {
-            "section_id": "TG-009",
+            "section_id": "AU-004",
+            "title": "Total-Loss / Valuation Padding",
+            "summary": "Claim or estimate amounts that exceed the vehicle's actual cash value (ACV) "
+                       "indicate total-loss padding and require valuation review.",
+            "fraud_indicators": [
+                "Claim amount exceeds the vehicle ACV",
+                "Estimate > 1.1x the vehicle ACV",
+                "Vehicle reported stolen shortly after a max-coverage change",
+            ],
+            "applicable_types": ["collision", "comprehensive", "theft"],
+        },
+        {
+            "section_id": "AU-005",
+            "title": "Serial Claimer / Staged Collision",
+            "summary": "Insureds with repeated claims in a short window, especially with soft-tissue "
+                       "injury components, are flagged for staged-collision review.",
+            "fraud_indicators": [
+                "3+ auto claims by the same insured in a short window",
+                "Repetitive soft-tissue injury components",
+                "Injury claimed without a corroborating police report",
+            ],
+            "applicable_types": ["collision", "liability", "medical_payments"],
+        },
+        {
+            "section_id": "AU-006",
             "title": "Document & Evidence Integrity",
-            "summary": "Receipts, police reports, boarding passes, and medical reports must be authentic. "
+            "summary": "Repair estimates, police reports, and damage photos must be authentic. "
                        "Manipulated, screenshot, or template-generated documents are rejected.",
             "fraud_indicators": [
-                "Receipt amounts/dates show overwriting or misalignment",
-                "Police report lacks an official report number or stamp",
+                "Estimate amounts/dates show overwriting or misalignment",
+                "Police report lacks an official report number",
+                "Damage photo shows staged or pre-existing damage",
                 "Document appears to be a screenshot or editable template",
-                "Issuer logo/currency/language conflicts with the claimed destination",
             ],
-            "applicable_types": ["medical_emergency", "baggage_loss", "trip_cancellation",
-                                  "trip_interruption", "travel_delay"],
-        },
-        {
-            "section_id": "TG-010",
-            "title": "Resubmission Abuse — Duplicate and Modified Claims",
-            "summary": "Resubmitted claims must have material changes. Repeated resubmission of denied "
-                       "claims, or resubmissions with inflated amounts, are flagged.",
-            "fraud_indicators": [
-                "Claim resubmitted multiple times after denial",
-                "Resubmission amount exceeds the original by >20%",
-                "Different incident details on resubmission for the same trip",
-            ],
-            "applicable_types": ["trip_cancellation", "trip_interruption", "medical_emergency",
-                                  "baggage_loss", "travel_delay"],
+            "applicable_types": ["collision", "comprehensive", "theft", "liability", "medical_payments"],
         },
     ]
 
@@ -307,64 +250,50 @@ search_billing_rules = search_regulatory_rules
 
 
 # =========================================================================
-# 3.  find_similar_cases  (travel precedents)
+# 3.  find_similar_cases  (auto precedents)
 # =========================================================================
 def find_similar_cases(
-    scheme_pattern: Annotated[str, "destination_fraud_ring, phantom_booking, baggage_padding, fabricated_delay, serial_claimer"],
+    scheme_pattern: Annotated[str, "inflated_estimate, staged_theft, repair_shop_ring, serial_claimer"],
     specialty: Annotated[str, "Claim type if applicable"] = None,
 ) -> List[Dict]:
-    """Find precedent travel-insurance cases with similar fraud patterns."""
+    """Find precedent auto-insurance cases with similar fraud patterns."""
     _tool_log('find_similar_cases', f'Looking up precedents for "{scheme_pattern}"...')
 
     CASES = {
-        "destination_fraud_ring": [{
-            "case_id": "SIU-TG-2025-0142",
-            "scheme": "Destination Fraud Ring — Overseas Hospital Mill",
-            "entities_involved": 9, "total_claims": 31, "total_paid": 318_000,
-            "summary": "Nine travelers filed medical-emergency claims through a single unverified clinic "
-                       "in a high-risk Caribbean destination over four months. Bills averaged 6x the "
-                       "destination's cost-per-day. The facility was later confirmed to be issuing "
-                       "fabricated invoices for procedures never performed.",
-            "outcome": "Provider blacklisted, $318K demand issued, 4 travelers referred for prosecution",
+        "inflated_estimate": [{
+            "case_id": "SIU-AU-2025-0142",
+            "scheme": "Inflated Repair Estimate — Watchlisted Shop",
+            "entities_involved": 3, "total_claims": 11, "total_paid": 142_000,
+            "summary": "A single out-of-network body shop submitted estimates averaging 1.5x the "
+                       "vehicles' ACV across 11 collision claims, padding line items for undamaged panels.",
+            "outcome": "Shop blacklisted, $142K demand issued, 2 insureds referred for review",
             "year": 2025,
         }],
-        "phantom_booking": [{
-            "case_id": "SIU-TG-2024-0091",
-            "scheme": "Phantom Booking — Fabricated Cancellation",
-            "entities_involved": 1, "total_claims": 1, "total_paid": 6_200,
-            "summary": "Traveler filed a trip-cancellation claim with no verifiable airline or hotel "
-                       "booking. The provided PNR did not exist in the airline GDS. Policy had been "
-                       "purchased two days before the claimed cancellation.",
-            "outcome": "Claim denied, traveler flagged for enhanced monitoring",
+        "staged_theft": [{
+            "case_id": "SIU-AU-2024-0091",
+            "scheme": "Staged Theft — Total-Loss Padding",
+            "entities_involved": 1, "total_claims": 1, "total_paid": 27_000,
+            "summary": "Vehicle reported stolen 6 days after a max-coverage policy change. Claim "
+                       "exceeded the vehicle ACV; no forced-entry evidence and no police report.",
+            "outcome": "Claim denied, insured flagged for enhanced monitoring",
             "year": 2024,
         }],
-        "baggage_padding": [{
-            "case_id": "SIU-TG-2025-0207",
-            "scheme": "Baggage Padding — Luxury Item Inflation",
-            "entities_involved": 1, "total_claims": 1, "total_paid": 15_200,
-            "summary": "Baggage-loss claim listed seven luxury items (Rolex, Louis Vuitton, MacBook Pro) "
-                       "totalling 6x the peer average with no purchase receipts. Submitted damage photo "
-                       "showed pristine 'destroyed' luggage inconsistent with the claimed cause.",
-            "outcome": "Claim reduced to documented items, $11K prevented",
+        "repair_shop_ring": [{
+            "case_id": "SIU-AU-2025-0207",
+            "scheme": "Repair-Shop Ring",
+            "entities_involved": 9, "total_claims": 24, "total_paid": 318_000,
+            "summary": "Nine insureds routed collision claims through one watchlisted shop over four "
+                       "months, with staged-damage photos and duplicated line items.",
+            "outcome": "Shop blacklisted, $318K under recovery review",
             "year": 2025,
-        }],
-        "fabricated_delay": [{
-            "case_id": "SIU-TG-2024-0318",
-            "scheme": "Fabricated Delay — Tracking Mismatch",
-            "entities_involved": 1, "total_claims": 1, "total_paid": 1_150,
-            "summary": "Traveler claimed a 22-hour delay; IATA FlightStats showed the flight departed "
-                       "on time with 0 minutes delay. No airport documentation was produced.",
-            "outcome": "Claim denied for lack of corroboration",
-            "year": 2024,
         }],
         "serial_claimer": [{
-            "case_id": "SIU-TG-2025-0064",
-            "scheme": "Serial Claimer — Benefit Harvesting",
-            "entities_involved": 1, "total_claims": 8, "total_paid": 47_000,
-            "summary": "Traveler filed 8 medical-emergency claims across 14 months, always food poisoning "
-                       "or dehydration, always within 3 days of trip start. Claim frequency was 4.8 SD "
-                       "above the traveler peer group.",
-            "outcome": "All open claims held, policy non-renewed, $47K under recovery review",
+            "case_id": "SIU-AU-2025-0064",
+            "scheme": "Serial Claimer — Staged Collisions",
+            "entities_involved": 1, "total_claims": 6, "total_paid": 88_000,
+            "summary": "Insured filed 6 auto claims in 12 months, always with a soft-tissue injury "
+                       "component. Claim frequency was 4.8 SD above the insured peer group.",
+            "outcome": "Open claims held, policy non-renewed, $88K under recovery review",
             "year": 2025,
         }],
     }
@@ -383,13 +312,13 @@ def find_similar_cases(
 
 
 # =========================================================================
-# 4.  estimate_recovery  (travel collectability factors)
+# 4.  estimate_recovery
 # =========================================================================
 def estimate_recovery(
     flagged_claims: Annotated[List[Dict], "List of suspicious claims [{claim_id, claim_amount, ...}]"],
     peer_benchmarks: Annotated[Dict, "Peer benchmarks: {avg_claim_amount, ...}"],
 ) -> Dict:
-    """Estimate recoverable amount from flagged travel claims."""
+    """Estimate recoverable amount from flagged auto claims."""
     _tool_log('estimate_recovery', f'Estimating recovery for {len(flagged_claims)} claims...')
     if not flagged_claims:
         return {"gross_recoverable": 0, "collectability_score": 0, "net_expected": 0}
@@ -405,7 +334,7 @@ def estimate_recovery(
         excess_rate = 0.15
         gross = total_claimed * excess_rate
 
-    # Travel collectability: doc quality 0.85 · traveler cooperation 0.75 · statute window 0.95
+    # Auto collectability: doc quality 0.85 · insured cooperation 0.75 · statute window 0.95
     collectability = 0.85 * 0.75 * 0.95
     net_expected = gross * collectability
 
@@ -438,18 +367,18 @@ def estimate_recovery(
 
 
 # =========================================================================
-# 5.  compile_dossier  (travel-themed)
+# 5.  compile_dossier  (auto-themed)
 # =========================================================================
 def compile_dossier(
     case_data: Annotated[Dict, "Complete case data: hypothesis, entities, evidence, stats, network, rules, similar_cases, recovery"],
 ) -> str:
     """
-    Generate the final travel-insurance investigation dossier in Markdown.
+    Generate the final auto-insurance investigation dossier in Markdown.
     ONLY call this AFTER assess_evidence returns SUFFICIENT.
     """
     _tool_log('compile_dossier', 'Generating final Markdown dossier...')
 
-    hypothesis = case_data.get('hypothesis', 'Suspected Travel Insurance Fraud')
+    hypothesis = case_data.get('hypothesis', 'Suspected Auto Insurance Fraud')
     entities = case_data.get('entities', [])
     evidence = case_data.get('evidence', [])
     stats = case_data.get('statistical_analysis', {})
@@ -473,7 +402,7 @@ def compile_dossier(
 
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
 
-    dossier = f"""# TRAVEL INSURANCE FRAUD INVESTIGATION DOSSIER
+    dossier = f"""# AUTO INSURANCE FRAUD INVESTIGATION DOSSIER
 
 **Case Hypothesis**: {hypothesis}
 **Date Generated**: {now}
@@ -485,7 +414,7 @@ def compile_dossier(
 
 This investigation identified a suspected **{hypothesis}** involving {len(entities)} entities with an estimated net recovery of **${sf(recovery.get('net_expected')):,.2f}**.
 
-The scheme was substantiated by {len(evidence)} independent evidence points. Statistical analysis confirmed deviations exceeding normal peer benchmarks. Pattern analysis indicates behaviour inconsistent with legitimate travel claims.
+The scheme was substantiated by {len(evidence)} independent evidence points. Statistical analysis confirmed deviations exceeding normal peer benchmarks. Pattern analysis indicates behaviour inconsistent with legitimate auto claims.
 
 **Recommended Action**: Escalate to Special Investigations Unit for formal review.
 
@@ -508,8 +437,8 @@ The scheme was substantiated by {len(evidence)} independent evidence points. Sta
                 dossier += f"- **Total Claimed**: ${amt:,.2f}\n"
             if entity.get('claim_count'):
                 dossier += f"- **Claims**: {entity['claim_count']}\n"
-            if entity.get('destination'):
-                dossier += f"- **Destination**: {entity['destination']}\n"
+            if entity.get('vehicle'):
+                dossier += f"- **Vehicle**: {entity['vehicle']}\n"
             dossier += "\n"
         else:
             dossier += f"\n### Entity {i}: {entity}\n\n"
@@ -611,13 +540,13 @@ The scheme was substantiated by {len(evidence)} independent evidence points. Sta
 
     dossier += "\n---\n\n## RECOMMENDED ACTIONS\n\n"
     dossier += "1. **Immediate**: Place flagged claims on payment hold pending SIU review\n"
-    dossier += "2. **Verification**: Request original booking confirmations, receipts, police reports, and overseas medical records\n"
-    dossier += "3. **Investigation**: Verify bookings with the airline/GDS, confirm flight delays with IATA tracking, and conduct provider checks\n"
+    dossier += "2. **Verification**: Request original repair estimates, police reports, and damage photos\n"
+    dossier += "3. **Investigation**: Re-inspect the vehicle, verify the shop's network status, and confirm ACV\n"
     dossier += "4. **Recovery**: Issue demand letters for identified overpayments\n"
-    dossier += "5. **Prevention**: Flag travelers/providers for enhanced monitoring on future claims\n\n"
+    dossier += "5. **Prevention**: Flag insureds/shops for enhanced monitoring on future claims\n\n"
 
     dossier += "---\n\n"
-    dossier += "*Generated by Zurich Travel Guard Examiner Workflow Copilot*\n"
+    dossier += "*Generated by Car Insurance Examiner Workflow Copilot*\n"
 
     _tool_log('compile_dossier', f'Dossier generated ({len(dossier)} chars)')
     return dossier

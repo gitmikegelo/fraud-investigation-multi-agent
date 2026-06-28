@@ -5,8 +5,6 @@ import { useMemo } from 'react'
  *
  *          [START]
  *             |
- *        [Analysis]  ←  Isolation Forest · Graph Analysis
- *             |
  *        [Orchestrator]  ←──── [Dossier]
  *             |                    ↑
  *       [Investigation] ──────────┘
@@ -17,17 +15,15 @@ import { useMemo } from 'react'
  */
 
 const NODES = [
-  { id: 'start',         x: 300, y: 24,  label: 'START',            type: 'terminal' },
-  { id: 'analysis',      x: 300, y: 92,  label: 'Initial Analysis', type: 'analysis', desc: 'Isolation Forest · Graph Analysis' },
-  { id: 'orchestrator',  x: 300, y: 172, label: 'Orchestrator',     type: 'agent',   desc: 'Lead Investigator' },
-  { id: 'investigation', x: 150, y: 278, label: 'Investigation',    type: 'agent',   desc: 'Detective Agent' },
-  { id: 'dossier',       x: 450, y: 278, label: 'Dossier',          type: 'agent',   desc: 'Case Writer' },
+  { id: 'start',         x: 300, y: 40,  label: 'START',            type: 'terminal' },
+  { id: 'orchestrator',  x: 300, y: 130, label: 'Orchestrator',     type: 'agent',   desc: 'Lead Investigator' },
+  { id: 'investigation', x: 150, y: 260, label: 'Investigation',    type: 'agent',   desc: 'Detective Agent' },
+  { id: 'dossier',       x: 450, y: 260, label: 'Dossier',          type: 'agent',   desc: 'Case Writer' },
   { id: 'end',           x: 300, y: 348, label: 'END',              type: 'terminal' },
 ]
 
 const EDGES = [
-  { from: 'start',         to: 'analysis',       label: '' },
-  { from: 'analysis',      to: 'orchestrator',   label: 'anomalies detected' },
+  { from: 'start',         to: 'orchestrator',   label: '' },
   { from: 'orchestrator',  to: 'investigation',  label: 'investigate' },
   { from: 'orchestrator',  to: 'dossier',        label: 'compile' },
   { from: 'orchestrator',  to: 'end',            label: 'done' },
@@ -36,7 +32,7 @@ const EDGES = [
 ]
 
 // ── One accent system ────────────────────────────────────────────────
-//   purple  → orchestrator / control (+ start/analysis = control entry)
+//   purple  → orchestrator / control
 //   green   → active / processing (investigation)
 //   amber   → output / writer (dossier)
 //   neutral → terminals (start / end)
@@ -50,7 +46,6 @@ const ACCENT = {
 // Role assignment per node, on the dark canvas
 const NODE_ROLE = {
   start:         'neutral',
-  analysis:      'purple',
   orchestrator:  'purple',
   investigation: 'green',
   dossier:       'amber',
@@ -72,9 +67,8 @@ function getNodeDimensions(id) {
   const node = NODES.find(n => n.id === id)
   if (!node) return { w: 0, h: 0 }
   const isTerminal = node.type === 'terminal'
-  const isAnalysis = node.type === 'analysis'
   return {
-    w: isTerminal ? 84 : isAnalysis ? 184 : 140,
+    w: isTerminal ? 84 : 140,
     h: isTerminal ? 30 : 52
   }
 }
@@ -161,8 +155,8 @@ export default function GraphView({ activeNode, nodeHistory, isRunning, loopCoun
     return null
   }, [activeNode, nodeHistory])
 
-  // Show claims panel only after analysis is done (once orchestrator appears in history)
-  const analysisComplete = nodeHistory.includes('orchestrator')
+  // Show claims panel only once the orchestrator has run (appears in history)
+  const orchestratorStarted = nodeHistory.includes('orchestrator')
 
   // Only render nodes that actually exist in the layout (no ghost/placeholder nodes)
   const renderableNodes = NODES.filter(n => n.label && n.label.trim().length > 0)
@@ -175,8 +169,8 @@ export default function GraphView({ activeNode, nodeHistory, isRunning, loopCoun
         background: `radial-gradient(120% 90% at 50% 0%, #161b27 0%, ${CANVAS_BG} 70%)`,
       }}
     >
-      {/* Initial Claims Panel — only shown after analysis completes */}
-      {analysisComplete && initialClaims.length > 0 && (
+      {/* Initial Claims Panel — only shown once the orchestrator has started */}
+      {orchestratorStarted && initialClaims.length > 0 && (
         <div
           className="flex-shrink-0 overflow-y-auto p-3"
           style={{

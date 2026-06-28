@@ -7,17 +7,19 @@ const PRIORITY_COLORS = {
 }
 
 const TYPE_LABELS = {
-  wellness:            'Wellness',
-  accident:            'Accident',
-  hospital_indemnity:  'Hospital Ind.',
-  critical_illness:    'Critical Illness',
+  collision:        'Collision',
+  comprehensive:    'Comprehensive',
+  theft:            'Theft',
+  liability:        'Liability',
+  medical_payments: 'Medical Pay',
 }
 
 const TYPE_COLORS = {
-  wellness:           { bg: 'rgba(34,197,94,0.12)',  text: '#4ade80' },
-  accident:           { bg: 'rgba(59,130,246,0.12)', text: '#60a5fa' },
-  hospital_indemnity: { bg: 'rgba(168,85,247,0.12)', text: '#c084fc' },
-  critical_illness:   { bg: 'rgba(239,68,68,0.12)',  text: '#fca5a5' },
+  collision:        { bg: 'rgba(59,130,246,0.12)', text: '#60a5fa' },
+  comprehensive:    { bg: 'rgba(34,197,94,0.12)',  text: '#4ade80' },
+  theft:            { bg: 'rgba(239,68,68,0.12)',  text: '#fca5a5' },
+  liability:        { bg: 'rgba(168,85,247,0.12)', text: '#c084fc' },
+  medical_payments: { bg: 'rgba(234,179,8,0.12)',  text: '#facc15' },
 }
 
 export default function CaseQueue({ onSelectCase }) {
@@ -56,11 +58,12 @@ export default function CaseQueue({ onSelectCase }) {
   ]
 
   const typeTabs = [
-    { id: null,                  label: 'All Types' },
-    { id: 'wellness',           label: 'Wellness' },
-    { id: 'accident',           label: 'Accident' },
-    { id: 'hospital_indemnity', label: 'Hospital Ind.' },
-    { id: 'critical_illness',   label: 'Critical Illness' },
+    { id: null,               label: 'All Types' },
+    { id: 'collision',        label: 'Collision' },
+    { id: 'comprehensive',    label: 'Comprehensive' },
+    { id: 'theft',            label: 'Theft' },
+    { id: 'liability',        label: 'Liability' },
+    { id: 'medical_payments', label: 'Medical Pay' },
   ]
 
   return (
@@ -159,7 +162,7 @@ export default function CaseQueue({ onSelectCase }) {
             <tbody>
               {cases.map(c => {
                 const colors = PRIORITY_COLORS[c.priority] || PRIORITY_COLORS.LOW
-                const typeColor = TYPE_COLORS[c.claim_type] || TYPE_COLORS.wellness
+                const typeColor = TYPE_COLORS[c.claim_type] || TYPE_COLORS.collision
                 const ruleCount = c.rules_triggered?.length || 0
                 const taskCount = c.workflow_tasks?.length || 0
                 return (

@@ -15,9 +15,9 @@ import time
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from main import initialize_data
-from agents.tools_investigation import set_context as set_investigation_context
-from agents.tools_dossier import set_context as set_dossier_context
+from main import initialize_car_data as initialize_data
+from agents.tools_investigation_car import set_context as set_investigation_context
+from agents.tools_dossier_car import set_context as set_dossier_context
 from agents.graph import run_investigation
 
 

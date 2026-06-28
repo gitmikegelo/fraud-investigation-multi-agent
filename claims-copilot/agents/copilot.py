@@ -33,13 +33,8 @@ def get_or_create_session(case_id: str, case_type: str, subject_id: str = None,
             flag_reason=flag_reason,
         )
 
-        from main import DOMAIN_MODE
-        if DOMAIN_MODE == "travel":
-            from agents.prompts_travel import TRAVEL_COPILOT_PROMPT
-            copilot_prompt = TRAVEL_COPILOT_PROMPT
-        else:
-            from agents.prompts_supplemental import SUPPLEMENTAL_COPILOT_PROMPT
-            copilot_prompt = SUPPLEMENTAL_COPILOT_PROMPT
+        from agents.prompts_car import CAR_COPILOT_PROMPT
+        copilot_prompt = CAR_COPILOT_PROMPT
         context = f"""Currently reviewing claim:
 - Claim ID: {case_id}
 - Claimant: {subject_name} (ID: {subject_id})
@@ -55,13 +50,8 @@ When asked about 'this claim', refer to {case_id} for {subject_name}.
 
 
 def get_tools_for_case_type(case_type: str) -> List:
-    from main import DOMAIN_MODE
-    if DOMAIN_MODE == "travel":
-        from agents.tools_travel import ALL_TRAVEL_TOOLS
-        return ALL_TRAVEL_TOOLS
-    else:
-        from agents.tools_supplemental import ALL_SUPPLEMENTAL_TOOLS
-        return ALL_SUPPLEMENTAL_TOOLS
+    from agents.tools_car import ALL_CAR_TOOLS
+    return ALL_CAR_TOOLS
 
 
 def handle_analyst_message_sync(case_id: str, case_type: str, analyst_message: str,

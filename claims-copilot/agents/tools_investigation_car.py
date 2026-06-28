@@ -1,17 +1,16 @@
 """
-Investigation Agent Tools (Travel) — 7 tools for Zurich Travel Guard fraud detection.
+Investigation Agent Tools (Car) — 7 tools for Car Insurance fraud detection.
 
-Mirrors agents/tools_investigation.py (supplemental health) but operates on travel
-entities: travelers (TRV), overseas medical providers (MPR), and destinations (DST).
-The DataContext stores travel data under the (legacy-named) supplemental_* fields:
-  - supplemental_claims         → List[TravelClaim]
-  - supplemental_data["travelers"|"providers"|"destinations"|"policies"|"companions"|...]
+Operates on car entities: insureds (INS), repair shops (SHP), and vehicles (VEH).
+The DataContext stores car data under the (legacy-named) supplemental_* fields:
+  - supplemental_claims         → List[CarClaim]
+  - supplemental_data["insureds"|"repair_shops"|"vehicles"|"policies"|...]
 """
 
 import time
 import json
 import statistics
-from typing import List, Dict, Optional, Annotated
+from typing import List, Dict, Annotated
 from datetime import datetime
 
 
@@ -41,8 +40,6 @@ def _truncate_tool_output(output, tool_name: str):
 
 
 # ---------------------------------------------------------------------------
-# Global context
-# ---------------------------------------------------------------------------
 _context = None
 
 
@@ -51,17 +48,17 @@ def set_context(ctx):
     _context = ctx
 
 
-# ---- entity accessors (travel) --------------------------------------------
-def _travelers() -> List:
-    return _context.supplemental_data.get("travelers", []) if _context else []
+# ---- entity accessors (car) -----------------------------------------------
+def _insureds() -> List:
+    return _context.supplemental_data.get("insureds", []) if _context else []
 
 
-def _providers() -> List:
-    return _context.supplemental_data.get("providers", []) if _context else []
+def _shops() -> List:
+    return _context.supplemental_data.get("repair_shops", []) if _context else []
 
 
-def _destinations() -> List:
-    return _context.supplemental_data.get("destinations", []) if _context else []
+def _vehicles() -> List:
+    return _context.supplemental_data.get("vehicles", []) if _context else []
 
 
 def _policies() -> List:
@@ -72,24 +69,24 @@ def _claims() -> List:
     return _context.supplemental_claims if _context else []
 
 
-def _get_traveler(tid: str):
-    return next((t for t in _travelers() if t.traveler_id == tid), None)
+def _get_insured(iid: str):
+    return next((i for i in _insureds() if i.insured_id == iid), None)
 
 
-def _get_provider(pid: str):
-    return next((p for p in _providers() if p.provider_id == pid), None)
+def _get_shop(sid: str):
+    return next((s for s in _shops() if s.shop_id == sid), None)
 
 
-def _get_destination(did: str):
-    return next((d for d in _destinations() if d.destination_id == did), None)
+def _get_vehicle(vid: str):
+    return next((v for v in _vehicles() if v.vehicle_id == vid), None)
 
 
-def _traveler_claims(tid: str) -> List:
-    return [c for c in _claims() if c.traveler_id == tid]
+def _insured_claims(iid: str) -> List:
+    return [c for c in _claims() if c.insured_id == iid]
 
 
-def _provider_claims(pid: str) -> List:
-    return [c for c in _claims() if getattr(c, "provider_id", None) == pid]
+def _shop_claims(sid: str) -> List:
+    return [c for c in _claims() if getattr(c, "shop_id", None) == sid]
 
 
 # ---------------------------------------------------------------------------
@@ -99,11 +96,11 @@ def scan_suspicious_entities(
     min_risk_score: Annotated[int, "Minimum risk score (0-100), default 40"] = 40,
 ) -> List[Dict]:
     """
-    Scan the case queue for high-risk travel claims and the entities linked to them.
+    Scan the case queue for high-risk car claims and the entities linked to them.
 
-    Returns entities (travelers, overseas providers) sorted by risk score. Each entry
-    includes: entity_id, entity_type, risk_score, risk_tier, claim_id, claim_type,
-    claim_amount, destination, provider_id, top_factors.
+    Returns entities (insureds, shops) sorted by risk score. Each entry includes:
+    entity_id, entity_type, risk_score, risk_tier, claim_id, claim_type,
+    claim_amount, vehicle, shop_id, top_factors.
     """
     _tool_log('scan_suspicious_entities', f'Scanning case queue (risk >= {min_risk_score})...')
     t0 = time.time()
@@ -116,24 +113,24 @@ def scan_suspicious_entities(
         if not risk or risk.total_score < min_risk_score:
             continue
         claim = _context.get_claim(case.case_id)
-        dest = _get_destination(getattr(claim, "destination_id", None)) if claim else None
+        vehicle = _get_vehicle(getattr(claim, "vehicle_id", None)) if claim else None
         results.append({
             'entity_id': case.subject_id,
-            'entity_type': 'traveler',
+            'entity_type': 'insured',
             'entity_name': case.subject_name,
             'risk_score': risk.total_score,
             'risk_tier': risk.tier,
             'claim_id': case.case_id,
             'claim_type': case.claim_type.value if hasattr(case.claim_type, 'value') else str(case.claim_type),
             'claim_amount': float(claim.claim_amount) if claim else 0,
-            'destination': f"{dest.city}, {dest.country}" if dest else None,
-            'provider_id': getattr(claim, 'provider_id', None) if claim else None,
+            'vehicle': f"{vehicle.year} {vehicle.make} {vehicle.model}" if vehicle else None,
+            'shop_id': getattr(claim, 'shop_id', None) if claim else None,
             'fraud_scenario': getattr(claim, 'fraud_scenario', None) if claim else None,
             'top_factors': risk.top_factors[:5],
         })
 
     results.sort(key=lambda r: r['risk_score'], reverse=True)
-    _tool_log('scan_suspicious_entities', f'Found {len(results)} entities (risk >= {min_risk_score}) in {time.time()-t0:.1f}s')
+    _tool_log('scan_suspicious_entities', f'Found {len(results)} entities in {time.time()-t0:.1f}s')
     return _truncate_tool_output(results[:10], 'scan_suspicious_entities')
 
 
@@ -141,12 +138,12 @@ def scan_suspicious_entities(
 # 2. profile_entity
 # ---------------------------------------------------------------------------
 def profile_entity(
-    entity_id: Annotated[str, "Entity ID to profile (e.g. TRV-0001, MPR-001, DST-001)"],
+    entity_id: Annotated[str, "Entity ID to profile (e.g. INS-0001, SHP-001, VEH-0001)"],
 ) -> Dict:
     """
-    Build a detailed profile for a traveler, overseas provider, or destination.
+    Build a detailed profile for an insured, repair shop, or vehicle.
 
-    Returns biographical/profile data, policy summary, claims history, and risk indicators.
+    Returns profile data, policy summary, claims history, and risk indicators.
     """
     _tool_log('profile_entity', f'Profiling {entity_id}...')
     if _context is None:
@@ -154,70 +151,63 @@ def profile_entity(
 
     profile: Dict = {"entity_id": entity_id}
 
-    # --- Traveler ---
-    traveler = _get_traveler(entity_id)
-    if traveler:
-        profile['entity_type'] = 'traveler'
-        profile['name'] = traveler.full_name
-        profile['dob'] = traveler.dob
-        profile['loyalty_tier'] = traveler.loyalty_tier
-        profile['address_state'] = traveler.address_state
-        profile['stored_claim_history'] = traveler.claim_history_count
-        profile['flagged'] = traveler.flagged
-        profile['notes'] = traveler.notes
+    insured = _get_insured(entity_id)
+    if insured:
+        profile['entity_type'] = 'insured'
+        profile['name'] = insured.full_name
+        profile['dob'] = insured.dob
+        profile['address_state'] = insured.address_state
+        profile['license_years'] = insured.license_years
+        profile['stored_claim_history'] = insured.claim_history_count
+        profile['flagged'] = insured.flagged
+        profile['notes'] = insured.notes
 
-        policies = [p for p in _policies() if p.traveler_id == entity_id]
+        policies = [p for p in _policies() if p.insured_id == entity_id]
         profile['policy_count'] = len(policies)
         profile['policies'] = [
-            {'id': p.policy_id, 'plan_type': p.plan_type, 'status': p.status,
-             'trip': f"{p.trip_start_date} → {p.trip_end_date}",
-             'coverage_medical': float(p.coverage_medical),
-             'coverage_baggage': float(p.coverage_baggage)}
+            {'id': p.policy_id, 'status': p.status,
+             'coverage': f"{p.effective_date} → {p.expiration_date}",
+             'collision': float(p.coverage_collision),
+             'comprehensive': float(p.coverage_comprehensive)}
             for p in policies[:5]
         ]
 
-        claims = _traveler_claims(entity_id)
+        claims = _insured_claims(entity_id)
         profile['claim_count'] = len(claims)
         profile['total_claimed'] = sum(c.claim_amount for c in claims)
         profile['claims'] = [
             {'id': c.claim_id, 'type': c.claim_type, 'amount': float(c.claim_amount),
-             'date_filed': c.date_filed, 'status': c.status,
-             'fraud_scenario': c.fraud_scenario}
+             'date_filed': c.date_filed, 'status': c.status, 'fraud_scenario': c.fraud_scenario}
             for c in claims[:5]
         ]
         return _truncate_tool_output(profile, 'profile_entity')
 
-    # --- Provider (overseas medical) ---
-    provider = _get_provider(entity_id)
-    if provider:
-        profile['entity_type'] = 'provider'
-        profile['name'] = provider.name
-        profile['provider_type'] = provider.provider_type
-        profile['on_watchlist'] = provider.on_watchlist
-        profile['verified'] = provider.verified
-        profile['notes'] = provider.notes
-        dest = _get_destination(provider.destination_id)
-        profile['location'] = f"{dest.city}, {dest.country}" if dest else provider.destination_id
-
-        pclaims = _provider_claims(entity_id)
-        profile['claim_count'] = len(pclaims)
-        profile['total_billed'] = sum(c.claim_amount for c in pclaims)
-        profile['unique_travelers'] = len({c.traveler_id for c in pclaims})
+    shop = _get_shop(entity_id)
+    if shop:
+        profile['entity_type'] = 'shop'
+        profile['name'] = shop.name
+        profile['state'] = shop.state
+        profile['on_watchlist'] = shop.on_watchlist
+        profile['in_network'] = shop.in_network
+        profile['verified'] = shop.verified
+        profile['notes'] = shop.notes
+        sclaims = _shop_claims(entity_id)
+        profile['claim_count'] = len(sclaims)
+        profile['total_billed'] = sum(c.claim_amount for c in sclaims)
+        profile['unique_insureds'] = len({c.insured_id for c in sclaims})
         return _truncate_tool_output(profile, 'profile_entity')
 
-    # --- Destination ---
-    dest = _get_destination(entity_id)
-    if dest:
-        profile['entity_type'] = 'destination'
-        profile['city'] = dest.city
-        profile['country'] = dest.country
-        profile['region'] = dest.region
-        profile['risk_level'] = dest.risk_level
-        profile['known_fraud_ring'] = dest.known_fraud_ring
-        profile['avg_medical_cost_per_day'] = dest.avg_medical_cost_per_day
-        dclaims = [c for c in _claims() if getattr(c, 'destination_id', None) == entity_id]
-        profile['claim_count'] = len(dclaims)
-        profile['total_claimed'] = sum(c.claim_amount for c in dclaims)
+    vehicle = _get_vehicle(entity_id)
+    if vehicle:
+        profile['entity_type'] = 'vehicle'
+        profile['description'] = f"{vehicle.year} {vehicle.make} {vehicle.model}"
+        profile['vin'] = vehicle.vin
+        profile['body_type'] = vehicle.body_type
+        profile['acv'] = vehicle.acv
+        profile['salvage_flag'] = vehicle.salvage_flag
+        vclaims = [c for c in _claims() if getattr(c, 'vehicle_id', None) == entity_id]
+        profile['claim_count'] = len(vclaims)
+        profile['total_claimed'] = sum(c.claim_amount for c in vclaims)
         return _truncate_tool_output(profile, 'profile_entity')
 
     return {"error": f"Entity {entity_id} not found"}
@@ -227,62 +217,54 @@ def profile_entity(
 # 3. compare_to_peers
 # ---------------------------------------------------------------------------
 def compare_to_peers(
-    entity_id: Annotated[str, "Entity ID to compare (traveler or provider)"],
-    metric: Annotated[str, "Metric: claim_amount | claim_count | baggage_value | provider_volume"],
+    entity_id: Annotated[str, "Entity ID to compare (insured or shop)"],
+    metric: Annotated[str, "Metric: claim_amount | claim_count | shop_volume"],
 ) -> Dict:
     """
     Compare an entity's metric to its peer group.
 
-    Travelers are compared against all travelers; providers against all providers.
+    Insureds are compared against all insureds; shops against all shops.
     Returns entity_value, peer_avg, peer_std, z_score, peer_count.
     """
     _tool_log('compare_to_peers', f'Comparing {entity_id} on "{metric}"...')
     if _context is None:
         return {"error": "DataContext not initialised"}
 
-    def _baggage_value(claims):
-        # sum of claim amounts for baggage_loss claims (the padding signal)
-        return sum(c.claim_amount for c in claims if c.claim_type == "baggage_loss")
-
-    traveler = _get_traveler(entity_id)
-    if traveler:
-        my_claims = _traveler_claims(entity_id)
+    insured = _get_insured(entity_id)
+    if insured:
+        my_claims = _insured_claims(entity_id)
         peer_values = []
-        for pt in _travelers():
-            pc = _traveler_claims(pt.traveler_id)
+        for pi in _insureds():
+            pc = _insured_claims(pi.insured_id)
             if metric == 'claim_amount':
                 peer_values.append(sum(c.claim_amount for c in pc))
             elif metric == 'claim_count':
                 peer_values.append(len(pc))
-            elif metric == 'baggage_value':
-                peer_values.append(_baggage_value(pc))
             else:
                 peer_values.append(0)
         if metric == 'claim_amount':
             entity_value = sum(c.claim_amount for c in my_claims)
         elif metric == 'claim_count':
             entity_value = len(my_claims)
-        elif metric == 'baggage_value':
-            entity_value = _baggage_value(my_claims)
         else:
             entity_value = 0
     else:
-        provider = _get_provider(entity_id)
-        if not provider:
+        shop = _get_shop(entity_id)
+        if not shop:
             return {"error": f"Entity {entity_id} not found"}
-        my_claims = _provider_claims(entity_id)
+        my_claims = _shop_claims(entity_id)
         peer_values = []
-        for pp in _providers():
-            pc = _provider_claims(pp.provider_id)
+        for ps in _shops():
+            pc = _shop_claims(ps.shop_id)
             if metric == 'claim_amount':
                 peer_values.append(sum(c.claim_amount for c in pc))
-            elif metric in ('claim_count', 'provider_volume'):
+            elif metric in ('claim_count', 'shop_volume'):
                 peer_values.append(len(pc))
             else:
                 peer_values.append(0)
         if metric == 'claim_amount':
             entity_value = sum(c.claim_amount for c in my_claims)
-        elif metric in ('claim_count', 'provider_volume'):
+        elif metric in ('claim_count', 'shop_volume'):
             entity_value = len(my_claims)
         else:
             entity_value = 0
@@ -311,14 +293,14 @@ def compare_to_peers(
 # 4. get_claim_details
 # ---------------------------------------------------------------------------
 def get_claim_details(
-    entity_id: Annotated[str, "Entity ID (traveler, provider, or claim ID) to get claims for"],
+    entity_id: Annotated[str, "Entity ID (insured, shop, or claim ID) to get claims for"],
     limit: Annotated[int, "Maximum number of claims to return, default 10"] = 10,
 ) -> List[Dict]:
     """
-    Get detailed claim records for a traveler, provider, or single claim ID.
+    Get detailed claim records for an insured, shop, or single claim ID.
 
-    Returns amounts, dates, claim-type-specific fields (delay hours, baggage items,
-    medical diagnosis), document checks, risk score, and triggered rules.
+    Returns amounts, dates, claim-type-specific fields, document checks, risk score,
+    and triggered rules.
     """
     _tool_log('get_claim_details', f'Fetching claims for {entity_id} (limit {limit})...')
     if _context is None:
@@ -329,9 +311,9 @@ def get_claim_details(
         claims_list = [single]
     else:
         claims_list = [c for c in _claims()
-                       if c.traveler_id == entity_id
-                       or getattr(c, 'provider_id', None) == entity_id
-                       or getattr(c, 'destination_id', None) == entity_id]
+                       if c.insured_id == entity_id
+                       or getattr(c, 'shop_id', None) == entity_id
+                       or getattr(c, 'vehicle_id', None) == entity_id]
     claims_list = claims_list[:limit]
 
     results = []
@@ -344,9 +326,9 @@ def get_claim_details(
         entry = {
             'claim_id': c.claim_id,
             'claim_type': c.claim_type,
-            'traveler_id': c.traveler_id,
-            'provider_id': getattr(c, 'provider_id', None),
-            'destination_id': getattr(c, 'destination_id', None),
+            'insured_id': c.insured_id,
+            'shop_id': getattr(c, 'shop_id', None),
+            'vehicle_id': getattr(c, 'vehicle_id', None),
             'policy_id': c.policy_id,
             'claim_amount': float(c.claim_amount),
             'approved_amount': float(c.approved_amount) if c.approved_amount else None,
@@ -354,20 +336,12 @@ def get_claim_details(
             'date_of_incident': c.date_of_incident,
             'status': c.status,
             'is_resubmission': c.is_resubmission,
+            'injury_claimed': c.injury_claimed,
+            'police_report_filed': c.police_report_filed,
+            'photo_evidence': getattr(c, 'photo_evidence', False),
             'fraud_scenario': c.fraud_scenario,
             'false_positive_scenario': c.false_positive_scenario,
         }
-        # claim-type-specific signals
-        if c.claim_type == "travel_delay":
-            entry['delay_hours'] = c.delay_hours
-        if c.claim_type == "baggage_loss":
-            entry['baggage_items'] = c.baggage_items
-            entry['photo_evidence'] = getattr(c, 'photo_evidence', False)
-        if c.claim_type == "medical_emergency":
-            entry['medical_diagnosis'] = c.medical_diagnosis
-        if getattr(c, 'cancellation_reason', ''):
-            entry['cancellation_reason'] = c.cancellation_reason
-
         if risk:
             entry['risk_score'] = risk.total_score
             entry['risk_tier'] = risk.tier
@@ -398,10 +372,7 @@ def find_connections(
 ) -> Dict:
     """
     Traverse the entity graph to find all entities connected within N hops
-    (travelers ↔ destinations ↔ providers).
-
-    Returns connected_entities (with relationship, type, distance),
-    connection_density, total_entities, and relationship_summary.
+    (insureds ↔ vehicles ↔ shops).
     """
     _tool_log('find_connections', f'Traversing graph from {entity_id} (depth={depth})...')
     if _context is None:
@@ -445,8 +416,7 @@ def find_connections(
         })
 
     connected.sort(key=lambda e: e['distance'])
-    subgraph_nodes = list(visited.keys())
-    sub = G.subgraph(subgraph_nodes)
+    sub = G.subgraph(list(visited.keys()))
     n = sub.number_of_nodes()
     density = sub.number_of_edges() / max(n, 1)
 
@@ -467,9 +437,8 @@ def find_ring(
 ) -> List[Dict]:
     """
     Find cross-claim fraud patterns. Uses pre-computed detected_patterns when present;
-    otherwise derives destination/provider rings on the fly:
-      - watchlisted/unverified overseas providers with multiple high-value medical claims
-      - destinations flagged as known fraud rings with clustered claims
+    otherwise derives repair-shop rings on the fly:
+      - watchlisted/out-of-network shops with multiple high-value claims
     """
     _tool_log('find_ring', f'Detecting rings (risk >= {min_risk_score})...')
     if _context is None:
@@ -488,43 +457,22 @@ def find_ring(
 
     if not results:
         rs = _context.claim_risk_scores
-        # Provider rings
-        for prov in _providers():
-            if not (prov.on_watchlist or not prov.verified):
+        for shop in _shops():
+            if not (shop.on_watchlist or not shop.in_network):
                 continue
-            pclaims = [c for c in _provider_claims(prov.provider_id)
+            sclaims = [c for c in _shop_claims(shop.shop_id)
                        if (rs.get(c.claim_id).total_score if rs.get(c.claim_id) else 0) >= min_risk_score]
-            if pclaims:
-                dest = _get_destination(prov.destination_id)
+            if sclaims:
                 results.append({
-                    'pattern_type': 'destination_fraud_ring',
-                    'description': f"{'Watchlisted' if prov.on_watchlist else 'Unverified'} provider "
-                                   f"'{prov.name}' in {dest.city if dest else prov.destination_id} "
-                                   f"linked to {len(pclaims)} high-risk medical claim(s)",
-                    'severity': 'CRITICAL' if prov.on_watchlist else 'HIGH',
-                    'entity_count': 1 + len({c.traveler_id for c in pclaims}),
-                    'entities': [prov.provider_id] + [c.traveler_id for c in pclaims][:9],
-                    'details': {'provider_id': prov.provider_id,
-                                'claims': [c.claim_id for c in pclaims],
-                                'total_billed': round(sum(c.claim_amount for c in pclaims), 2)},
-                })
-        # Destination clusters
-        for dst in _destinations():
-            if not dst.known_fraud_ring:
-                continue
-            dclaims = [c for c in _claims()
-                       if getattr(c, 'destination_id', None) == dst.destination_id
-                       and (rs.get(c.claim_id).total_score if rs.get(c.claim_id) else 0) >= min_risk_score]
-            if len(dclaims) >= 2:
-                results.append({
-                    'pattern_type': 'destination_cluster',
-                    'description': f"Destination {dst.city}, {dst.country} (known fraud ring) has "
-                                   f"{len(dclaims)} clustered high-risk claim(s)",
-                    'severity': 'HIGH',
-                    'entity_count': len({c.traveler_id for c in dclaims}),
-                    'entities': [c.traveler_id for c in dclaims][:10],
-                    'details': {'destination_id': dst.destination_id,
-                                'claims': [c.claim_id for c in dclaims]},
+                    'pattern_type': 'repair_shop_ring',
+                    'description': f"{'Watchlisted' if shop.on_watchlist else 'Out-of-network'} shop "
+                                   f"'{shop.name}' linked to {len(sclaims)} high-risk claim(s)",
+                    'severity': 'CRITICAL' if shop.on_watchlist else 'HIGH',
+                    'entity_count': 1 + len({c.insured_id for c in sclaims}),
+                    'entities': [shop.shop_id] + [c.insured_id for c in sclaims][:9],
+                    'details': {'shop_id': shop.shop_id,
+                                'claims': [c.claim_id for c in sclaims],
+                                'total_billed': round(sum(c.claim_amount for c in sclaims), 2)},
                 })
 
     _tool_log('find_ring', f'Found {len(results)} patterns')
@@ -532,29 +480,29 @@ def find_ring(
 
 
 # ---------------------------------------------------------------------------
-# 7. get_referral_history  (overseas provider claim timeline)
+# 7. get_shop_history  (repair-shop claim timeline)
 # ---------------------------------------------------------------------------
-def get_referral_history(
-    provider_id: Annotated[str, "Overseas provider ID to analyse"],
+def get_shop_history(
+    shop_id: Annotated[str, "Repair shop ID to analyse"],
     months: Annotated[int, "Number of months of history, default 12"] = 12,
 ) -> List[Dict]:
     """
-    Get monthly claim volume and traveler concentration for an overseas provider.
+    Get monthly claim volume and insured concentration for a repair shop.
 
-    Returns monthly records with total_claims, unique_travelers, top_traveler,
-    top_traveler_pct, avg_claim_amount — useful for detecting volume spikes or
-    single-source concentration at a suspect facility.
+    Returns monthly records with total_claims, unique_insureds, top_insured,
+    top_insured_pct, avg_claim_amount — useful for detecting volume spikes or
+    single-source concentration at a suspect shop.
     """
-    _tool_log('get_referral_history', f'Pulling {months}-month history for {provider_id}...')
+    _tool_log('get_shop_history', f'Pulling {months}-month history for {shop_id}...')
     if _context is None:
         return [{"error": "DataContext not initialised"}]
 
-    pclaims = _provider_claims(provider_id)
-    if not pclaims:
-        return [{"note": f"No claims found for {provider_id}"}]
+    sclaims = _shop_claims(shop_id)
+    if not sclaims:
+        return [{"note": f"No claims found for {shop_id}"}]
 
     monthly: Dict[str, list] = {}
-    for c in pclaims:
+    for c in sclaims:
         try:
             dt = datetime.strptime(c.date_of_incident or c.date_filed, '%Y-%m-%d')
         except (ValueError, TypeError):
@@ -566,24 +514,22 @@ def get_referral_history(
         mc = monthly[month_key]
         counts: Dict[str, int] = {}
         for c in mc:
-            counts[c.traveler_id] = counts.get(c.traveler_id, 0) + 1
+            counts[c.insured_id] = counts.get(c.insured_id, 0) + 1
         top = max(counts, key=counts.get) if counts else None
         top_pct = (counts[top] / len(mc) * 100) if top else 0
         history.append({
             'month': month_key,
             'total_claims': len(mc),
-            'unique_travelers': len(counts),
-            'top_traveler': top,
-            'top_traveler_pct': round(top_pct, 1),
+            'unique_insureds': len(counts),
+            'top_insured': top,
+            'top_insured_pct': round(top_pct, 1),
             'avg_claim_amount': round(sum(c.claim_amount for c in mc) / len(mc), 2),
         })
 
-    _tool_log('get_referral_history', f'Returned {len(history)} months of data')
-    return _truncate_tool_output(history, 'get_referral_history')
+    _tool_log('get_shop_history', f'Returned {len(history)} months of data')
+    return _truncate_tool_output(history, 'get_shop_history')
 
 
-# ---------------------------------------------------------------------------
-# Tool Registry — names kept identical to the supplemental set so prompts/graph match
 # ---------------------------------------------------------------------------
 INVESTIGATION_TOOLS = [
     scan_suspicious_entities,
@@ -592,5 +538,5 @@ INVESTIGATION_TOOLS = [
     get_claim_details,
     find_connections,
     find_ring,
-    get_referral_history,
+    get_shop_history,
 ]

@@ -18,20 +18,24 @@ const COMMON_CHIPS = [
 ]
 
 const TYPE_CHIPS = {
-  wellness: [
-    { label: 'Dependent Check',  prompt: 'Check dependent anomalies for this claim' },
-    { label: 'Claim History',    prompt: 'Show related claims for this member' },
+  collision: [
+    { label: 'Verify Estimate',  prompt: 'Verify the repair estimate against the vehicle value' },
+    { label: 'Shop Risk',        prompt: 'Check the repair shop watchlist status for this claim' },
   ],
-  accident: [
-    { label: 'Match to Policy',  prompt: 'Does this claim match the policy coverage?' },
-    { label: 'State Rules',      prompt: 'Check state-specific rules for this claim' },
+  comprehensive: [
+    { label: 'Verify Estimate',  prompt: 'Verify the repair estimate against the vehicle value' },
+    { label: 'Documents',        prompt: 'Analyze the damage photos and documents for this claim' },
   ],
-  hospital_indemnity: [
-    { label: 'Provider Check',   prompt: 'Check provider patterns for this claim' },
-    { label: 'Documents',        prompt: 'Analyze the medical documents for this claim' },
+  theft: [
+    { label: 'Match to Policy',  prompt: 'Does this theft claim match the policy coverage and ACV?' },
+    { label: 'Claim History',    prompt: 'Show related claims for this insured' },
   ],
-  critical_illness: [
-    { label: 'Medical Records',  prompt: 'Analyze medical documentation for this claim' },
+  liability: [
+    { label: 'Match to Policy',  prompt: 'Does this claim match the policy coverage limits?' },
+    { label: 'Claim History',    prompt: 'Check the insured claim history for serial-claim patterns' },
+  ],
+  medical_payments: [
+    { label: 'Injury Review',    prompt: 'Review the injury claim and supporting documents' },
     { label: 'Policy Check',     prompt: 'Get full policy details and any alerts' },
   ],
 }

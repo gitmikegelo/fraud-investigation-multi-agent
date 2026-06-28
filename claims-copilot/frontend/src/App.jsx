@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import CaseQueue from './components/CaseQueue'
 import ChatPanel from './components/ChatPanel'
 import RiskDashboard from './components/RiskDashboard'
@@ -49,8 +49,15 @@ const NAV = [
 export default function App() {
   const [activeView, setActiveView] = useState('queue')
   const [selectedCase, setSelectedCase] = useState(null)
-  // Persist checklist context so Auto Scan can receive it
   const checklistContextRef = useRef(null)
+  const [domainConfig, setDomainConfig] = useState(null)
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then(r => r.json())
+      .then(cfg => { if (!cfg.error) setDomainConfig(cfg) })
+      .catch(() => {})
+  }, [])
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'transparent' }}>
@@ -82,7 +89,7 @@ export default function App() {
                 background: 'linear-gradient(90deg, #a100ff, #d6298a)',
                 WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
               }}>Claims Co-Pilot</div>
-              <div style={{ color: 'var(--c-text-muted)', fontSize: 10, marginTop: 1 }}>Car Insurance</div>
+              <div style={{ color: 'var(--c-text-muted)', fontSize: 10, marginTop: 1 }}>{domainConfig?.display_name ?? 'Claims Examiner'}</div>
             </div>
           </div>
           <div style={{ height: 1, background: 'var(--c-sidebar-border)' }} />

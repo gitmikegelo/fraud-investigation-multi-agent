@@ -191,9 +191,14 @@ Severity values: "CRITICAL" for high-risk failures, "WARNING" for medium, "INFO"
 Set passed=true if the check finds NO issues, passed=false if an issue IS detected.
 """
 
-# Domain is locked to "car" (see main.py). Env var is intentionally ignored.
-_DOMAIN_MODE = "car"
-_VISION_PROMPT = _CAR_VISION_PROMPT
+from core.registry import get_active_plugin as _get_active_plugin
+
+def _get_vision_prompt() -> str:
+    """Lazily read vision prompt from the active plugin (avoids circular import at module load)."""
+    try:
+        return _get_active_plugin().vision_prompt
+    except KeyError:
+        return _CAR_VISION_PROMPT  # safe fallback during domain bootstrap
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -294,7 +299,7 @@ def analyze_document_image(
                         "source": {"bytes": image_bytes},
                     }
                 },
-                {"text": _VISION_PROMPT},
+                {"text": _get_vision_prompt()},
             ],
         }
     ]

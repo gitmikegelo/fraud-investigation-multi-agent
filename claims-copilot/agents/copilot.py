@@ -33,8 +33,9 @@ def get_or_create_session(case_id: str, case_type: str, subject_id: str = None,
             flag_reason=flag_reason,
         )
 
-        from agents.prompts_car import CAR_COPILOT_PROMPT
-        copilot_prompt = CAR_COPILOT_PROMPT
+        import domains  # noqa: F401
+        from core.registry import get_active_plugin
+        copilot_prompt = get_active_plugin().copilot_prompt
         context = f"""Currently reviewing claim:
 - Claim ID: {case_id}
 - Claimant: {subject_name} (ID: {subject_id})
@@ -50,8 +51,9 @@ When asked about 'this claim', refer to {case_id} for {subject_name}.
 
 
 def get_tools_for_case_type(case_type: str) -> List:
-    from agents.tools_car import ALL_CAR_TOOLS
-    return ALL_CAR_TOOLS
+    import domains  # noqa: F401
+    from core.registry import get_active_plugin
+    return get_active_plugin().copilot_tools
 
 
 def handle_analyst_message_sync(case_id: str, case_type: str, analyst_message: str,

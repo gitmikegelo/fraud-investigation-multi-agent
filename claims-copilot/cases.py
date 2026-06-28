@@ -53,9 +53,8 @@ class Case:
     workflow_tasks: List[Dict] = field(default_factory=list)
     document_flags: List[Dict] = field(default_factory=list)
     checklist_state: Dict = field(default_factory=dict)
-    employer_name: str = ""
-    member_id: str = ""
-    provider_name: str = ""
+    asset_description: str = ""   # vehicle, property, or domain object under claim
+    counterparty_name: str = ""   # repair shop, vendor, or opposing-party role
     claim_amount: float = 0.0
     coverage_start: Optional[str] = None
     coverage_end: Optional[str] = None

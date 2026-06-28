@@ -1,25 +1,16 @@
-"""Deterministic rules (R-001 to R-006) for Car Insurance claims."""
+"""Car insurance rules: R-001 to R-006 expressed as RuleSpec data.
 
-from dataclasses import dataclass, field
-from typing import List, Dict
+CAR_RULE_SPECS is the single source of truth. run_car_rules_engine() is a
+backwards-compatible shim used by main.py / tests until WS4 wires the plugin.
+"""
+
+from typing import Dict, List
 from datetime import datetime
 
-
-@dataclass
-class RuleResult:
-    rule_id: str
-    rule_name: str
-    severity: str  # BLOCK, FLAG, INFO
-    triggered: bool
-    explanation: str
-    details: Dict = field(default_factory=dict)
+from core.engine import RuleSpec, RuleResult, run_rules
 
 
-# ── Context accessors ─────────────────────────────────────────────────────────
-
-def _get_insured(context: Dict, insured_id: str):
-    return next((i for i in context.get("insureds", []) if i.insured_id == insured_id), None)
-
+# ── Context accessors (shared by predicates and explain fns) ──────────────────
 
 def _get_policy(context: Dict, policy_id: str):
     return next((p for p in context.get("policies", []) if p.policy_id == policy_id), None)
@@ -40,129 +31,189 @@ def _get_estimate(context: Dict, claim):
     return next((e for e in context.get("estimates", []) if e.claim_id == claim.claim_id), None)
 
 
+def _get_insured(context: Dict, insured_id: str):
+    return next((i for i in context.get("insureds", []) if i.insured_id == insured_id), None)
+
+
 def _get_insured_claims(context: Dict, insured_id: str) -> List:
     return [c for c in context.get("claims", []) if c.insured_id == insured_id]
 
 
-# ── Rule Definitions ──────────────────────────────────────────────────────────
+# ── R-001 ─────────────────────────────────────────────────────────────────────
 
-def r001_policy_after_incident(claim, context) -> RuleResult:
-    """R-001: Policy effective date is AFTER the incident date -> BLOCK"""
-    policy = _get_policy(context, claim.policy_id)
+def _r001_pred(claim, ctx) -> bool:
+    policy = _get_policy(ctx, claim.policy_id)
     if not policy:
-        return RuleResult("R-001", "Policy Effective After Incident", "BLOCK", False, "Policy not found")
+        return False
     try:
-        effective = datetime.strptime(policy.effective_date, "%Y-%m-%d")
-        incident = datetime.strptime(claim.date_of_incident, "%Y-%m-%d")
-        triggered = effective > incident
+        return datetime.strptime(policy.effective_date, "%Y-%m-%d") > \
+               datetime.strptime(claim.date_of_incident, "%Y-%m-%d")
     except (ValueError, TypeError):
-        triggered = False
-    return RuleResult(
-        rule_id="R-001", rule_name="Policy Effective After Incident",
-        severity="BLOCK", triggered=triggered,
-        explanation=(f"Policy effective {policy.effective_date} AFTER incident {claim.date_of_incident}"
-                     if triggered else "Policy effective before incident"),
-        details={"effective_date": policy.effective_date, "incident_date": claim.date_of_incident},
-    )
+        return False
 
 
-def r002_no_repair_estimate(claim, context) -> RuleResult:
-    """R-002: Collision/comprehensive/liability claim with no repair estimate on file -> BLOCK"""
+def _r001_explain(claim, ctx, triggered: bool) -> str:
+    policy = _get_policy(ctx, claim.policy_id)
+    if not policy:
+        return "Policy not found"
+    if triggered:
+        return f"Policy effective {policy.effective_date} AFTER incident {claim.date_of_incident}"
+    return "Policy effective before incident"
+
+
+def _r001_details(claim, ctx) -> Dict:
+    policy = _get_policy(ctx, claim.policy_id)
+    return {
+        "effective_date": policy.effective_date if policy else None,
+        "incident_date": claim.date_of_incident,
+    }
+
+
+# ── R-002 ─────────────────────────────────────────────────────────────────────
+
+def _r002_pred(claim, ctx) -> bool:
     if claim.claim_type not in ("collision", "comprehensive", "liability"):
-        return RuleResult("R-002", "No Repair Estimate", "BLOCK", False, "Not applicable to this claim type")
-    estimate = _get_estimate(context, claim)
-    triggered = estimate is None
-    return RuleResult(
-        rule_id="R-002", rule_name="No Repair Estimate",
-        severity="BLOCK", triggered=triggered,
-        explanation=("No repair estimate on file for a damage claim" if triggered
-                     else f"Estimate ${estimate.amount:,.2f} on file"),
-        details={"has_estimate": not triggered},
-    )
+        return False
+    return _get_estimate(ctx, claim) is None
 
 
-def r003_duplicate_claim(claim, context) -> RuleResult:
-    """R-003: Duplicate/resubmission of an existing claim -> BLOCK"""
-    triggered = claim.is_resubmission
-    return RuleResult(
-        rule_id="R-003", rule_name="Duplicate/Resubmission",
-        severity="BLOCK", triggered=triggered,
-        explanation=(f"Resubmission of {claim.original_claim_id}" if triggered else "No duplicate detected"),
-        details={"is_resubmission": triggered, "original": claim.original_claim_id},
-    )
+def _r002_explain(claim, ctx, triggered: bool) -> str:
+    if claim.claim_type not in ("collision", "comprehensive", "liability"):
+        return "Not applicable to this claim type"
+    if triggered:
+        return "No repair estimate on file for a damage claim"
+    estimate = _get_estimate(ctx, claim)
+    return f"Estimate ${estimate.amount:,.2f} on file"
 
 
-def r004_shop_on_watchlist(claim, context) -> RuleResult:
-    """R-004: Repair shop on the fraud watchlist (or unverified) -> BLOCK"""
+def _r002_details(claim, ctx) -> Dict:
+    return {"has_estimate": _get_estimate(ctx, claim) is not None}
+
+
+# ── R-003 ─────────────────────────────────────────────────────────────────────
+
+def _r003_pred(claim, ctx) -> bool:
+    return bool(claim.is_resubmission)
+
+
+def _r003_explain(claim, ctx, triggered: bool) -> str:
+    if triggered:
+        return f"Resubmission of {claim.original_claim_id}"
+    return "No duplicate detected"
+
+
+def _r003_details(claim, ctx) -> Dict:
+    return {"is_resubmission": claim.is_resubmission, "original": claim.original_claim_id}
+
+
+# ── R-004 ─────────────────────────────────────────────────────────────────────
+
+def _r004_pred(claim, ctx) -> bool:
     if not claim.shop_id:
-        return RuleResult("R-004", "Repair Shop Watchlist", "BLOCK", False, "No repair shop on claim")
-    shop = _get_shop(context, claim.shop_id)
+        return False
+    shop = _get_shop(ctx, claim.shop_id)
+    return bool(shop and shop.on_watchlist)
+
+
+def _r004_explain(claim, ctx, triggered: bool) -> str:
+    if not claim.shop_id:
+        return "No repair shop on claim"
+    shop = _get_shop(ctx, claim.shop_id)
     if not shop:
-        return RuleResult("R-004", "Repair Shop Watchlist", "BLOCK", False, "Shop not found")
-    triggered = bool(shop.on_watchlist)
-    return RuleResult(
-        rule_id="R-004", rule_name="Repair Shop Watchlist",
-        severity="BLOCK", triggered=triggered,
-        explanation=(f"Repair shop '{shop.name}' is on the fraud watchlist" if triggered
-                     else f"Shop '{shop.name}' — not on watchlist"),
-        details={"shop_name": shop.name, "on_watchlist": shop.on_watchlist, "verified": shop.verified},
-    )
+        return "Shop not found"
+    if triggered:
+        return f"Repair shop '{shop.name}' is on the fraud watchlist"
+    return f"Shop '{shop.name}' — not on watchlist"
 
 
-def r005_amount_exceeds_acv(claim, context) -> RuleResult:
-    """R-005: Claim/estimate amount far exceeds the vehicle ACV (total-loss padding) -> FLAG"""
-    vehicle = _get_vehicle(context, claim.vehicle_id)
+def _r004_details(claim, ctx) -> Dict:
+    shop = _get_shop(ctx, claim.shop_id) if claim.shop_id else None
+    return {
+        "shop_name": shop.name if shop else None,
+        "on_watchlist": shop.on_watchlist if shop else False,
+        "verified": shop.verified if shop else None,
+    }
+
+
+# ── R-005 ─────────────────────────────────────────────────────────────────────
+
+# Threshold is now a module-level constant — tunable without touching predicate code.
+R005_ACV_RATIO_THRESHOLD = 1.1
+
+
+def _r005_pred(claim, ctx) -> bool:
+    vehicle = _get_vehicle(ctx, claim.vehicle_id)
     if not vehicle or not vehicle.acv:
-        return RuleResult("R-005", "Amount Exceeds Vehicle Value", "FLAG", False, "No vehicle ACV on file")
+        return False
     ratio = claim.claim_amount / vehicle.acv if vehicle.acv > 0 else 0
-    triggered = ratio > 1.1
-    return RuleResult(
-        rule_id="R-005", rule_name="Amount Exceeds Vehicle Value",
-        severity="FLAG", triggered=triggered,
-        explanation=(f"Claim ${claim.claim_amount:,.2f} is {ratio:.1f}x the vehicle ACV ${vehicle.acv:,.2f}"
-                     if triggered else f"Amount ${claim.claim_amount:,.2f} within vehicle value (ACV ${vehicle.acv:,.2f})"),
-        details={"claim_amount": claim.claim_amount, "vehicle_acv": vehicle.acv, "ratio": round(ratio, 2)},
-    )
+    return ratio > R005_ACV_RATIO_THRESHOLD
 
 
-def r006_serial_claimer(claim, context) -> RuleResult:
-    """R-006: Insured has 3+ claims in the tracking period -> FLAG"""
-    insured_claims = _get_insured_claims(context, claim.insured_id)
-    insured = _get_insured(context, claim.insured_id)
+def _r005_explain(claim, ctx, triggered: bool) -> str:
+    vehicle = _get_vehicle(ctx, claim.vehicle_id)
+    if not vehicle or not vehicle.acv:
+        return "No vehicle ACV on file"
+    ratio = claim.claim_amount / vehicle.acv if vehicle.acv > 0 else 0
+    if triggered:
+        return f"Claim ${claim.claim_amount:,.2f} is {ratio:.1f}x the vehicle ACV ${vehicle.acv:,.2f}"
+    return f"Amount ${claim.claim_amount:,.2f} within vehicle value (ACV ${vehicle.acv:,.2f})"
+
+
+def _r005_details(claim, ctx) -> Dict:
+    vehicle = _get_vehicle(ctx, claim.vehicle_id)
+    acv = vehicle.acv if vehicle else 0
+    ratio = claim.claim_amount / acv if acv > 0 else 0
+    return {"claim_amount": claim.claim_amount, "vehicle_acv": acv, "ratio": round(ratio, 2)}
+
+
+# ── R-006 ─────────────────────────────────────────────────────────────────────
+
+R006_SERIAL_CLAIM_THRESHOLD = 3
+
+
+def _r006_pred(claim, ctx) -> bool:
+    insured = _get_insured(ctx, claim.insured_id)
     history_count = insured.claim_history_count if insured else 0
-    total = max(len(insured_claims), history_count)
-    triggered = total >= 3
-    return RuleResult(
-        rule_id="R-006", rule_name="Serial Claimer",
-        severity="FLAG", triggered=triggered,
-        explanation=(f"Insured has {total} claims (threshold: 3)" if triggered
-                     else f"Insured has {total} claims (normal)"),
-        details={"claim_count": total, "threshold": 3},
-    )
+    total = max(len(_get_insured_claims(ctx, claim.insured_id)), history_count)
+    return total >= R006_SERIAL_CLAIM_THRESHOLD
 
 
-# ── Rules Engine Runner ───────────────────────────────────────────────────────
+def _r006_explain(claim, ctx, triggered: bool) -> str:
+    insured = _get_insured(ctx, claim.insured_id)
+    history_count = insured.claim_history_count if insured else 0
+    total = max(len(_get_insured_claims(ctx, claim.insured_id)), history_count)
+    if triggered:
+        return f"Insured has {total} claims (threshold: {R006_SERIAL_CLAIM_THRESHOLD})"
+    return f"Insured has {total} claims (normal)"
 
-ALL_CAR_RULES = [
-    r001_policy_after_incident,
-    r002_no_repair_estimate,
-    r003_duplicate_claim,
-    r004_shop_on_watchlist,
-    r005_amount_exceeds_acv,
-    r006_serial_claimer,
+
+def _r006_details(claim, ctx) -> Dict:
+    insured = _get_insured(ctx, claim.insured_id)
+    history_count = insured.claim_history_count if insured else 0
+    total = max(len(_get_insured_claims(ctx, claim.insured_id)), history_count)
+    return {"claim_count": total, "threshold": R006_SERIAL_CLAIM_THRESHOLD}
+
+
+# ── Rule spec list (the single source of truth for car rules) ─────────────────
+
+CAR_RULE_SPECS: List[RuleSpec] = [
+    RuleSpec("R-001", "Policy Effective After Incident", "BLOCK",
+             _r001_pred, _r001_explain, _r001_details),
+    RuleSpec("R-002", "No Repair Estimate",             "BLOCK",
+             _r002_pred, _r002_explain, _r002_details),
+    RuleSpec("R-003", "Duplicate/Resubmission",         "BLOCK",
+             _r003_pred, _r003_explain, _r003_details),
+    RuleSpec("R-004", "Repair Shop Watchlist",          "BLOCK",
+             _r004_pred, _r004_explain, _r004_details),
+    RuleSpec("R-005", "Amount Exceeds Vehicle Value",   "FLAG",
+             _r005_pred, _r005_explain, _r005_details),
+    RuleSpec("R-006", "Serial Claimer",                 "FLAG",
+             _r006_pred, _r006_explain, _r006_details),
 ]
 
 
+# ── Backwards-compatible shim ─────────────────────────────────────────────────
+
 def run_car_rules_engine(claim, context: Dict) -> List[RuleResult]:
-    """Run all car insurance rules against a single claim."""
-    results = []
-    for rule_fn in ALL_CAR_RULES:
-        try:
-            results.append(rule_fn(claim, context))
-        except Exception as e:
-            results.append(RuleResult(
-                rule_id="ERR", rule_name=rule_fn.__name__,
-                severity="INFO", triggered=False,
-                explanation=f"Rule error: {str(e)[:100]}",
-            ))
-    return results
+    """Run all car rules against a single claim. Shim over core.engine.run_rules."""
+    return run_rules(claim, context, CAR_RULE_SPECS)

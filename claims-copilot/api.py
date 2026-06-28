@@ -21,85 +21,42 @@ try:
 except ImportError:
     pass
 
-from main import initialize_car_data, DataContext, DOMAIN_MODE
+import domains  # noqa: F401 — registers all domain plugins
+from core.registry import get_active_plugin
+from main import initialize_data, DataContext
 from cases import CaseStatus
 from intelligence.document_vision import run_vision_document_checks, find_claim_images
 
-from intelligence.checklist_car import run_full_checklist, run_checklist_step, CHECKLIST_STEPS
+_PLUGIN = get_active_plugin()
+CHECKLIST_DESCRIPTIONS: dict = _PLUGIN.checklist_descriptions
 
-
-def _build_car_checklist_ctx(claim_id: str) -> dict:
-    """Build checklist context for car insurance mode.
-
-    Runs live vision analysis on the claim's evidence image (e.g. a vehicle-damage
-    photo or repair estimate) when one is present, falling back to cached doc results.
-    """
-    live_doc_results = dict(data_ctx.claim_doc_results)
-    images = find_claim_images(claim_id)
-    has_images = len(images) > 0
-    if images:
-        try:
-            vision_results = run_vision_document_checks(claim_id)
-            if vision_results:
-                live_doc_results[claim_id] = vision_results
-        except Exception as e:
-            print(f"  ⚠ Vision analysis failed for {claim_id}: {e} — using cached metadata")
-    return {
-        "claims": data_ctx.supplemental_claims,
-        "insureds": data_ctx.supplemental_data.get("insureds", []),
-        "vehicles": data_ctx.supplemental_data.get("vehicles", []),
-        "repair_shops": data_ctx.supplemental_data.get("repair_shops", []),
-        "policies": data_ctx.supplemental_data.get("policies", []),
-        "estimates": data_ctx.supplemental_data.get("estimates", []),
-        "police_reports": data_ctx.supplemental_data.get("police_reports", []),
-        "workflow_tasks": data_ctx.supplemental_data.get("workflow_tasks", []),
-        "claim_rules": data_ctx.claim_rules,
-        "claim_risk_scores": data_ctx.claim_risk_scores,
-        "claim_doc_results": live_doc_results,
-        "has_claim_images": has_images,
-    }
+_checklist_mod = _PLUGIN.checklist_module
+run_checklist_step = _checklist_mod.run_checklist_step
+run_full_checklist = _checklist_mod.run_full_checklist
+CHECKLIST_STEPS = _checklist_mod.CHECKLIST_STEPS
 
 data_ctx: Optional[DataContext] = None
 
-# One-liner descriptions shown in the progressive checklist UI
-CHECKLIST_DESCRIPTIONS = {
-    1: "Validating required fields and claim completeness",
-    2: "Verifying repair estimate and damage evidence",
-    3: "Confirming incident within the policy coverage period",
-    4: "AI document analysis, fraud scoring and rule-based screening",
-    5: "Checking repair-shop watchlist and valuation",
-    6: "Verifying coverage type and policy limits",
-    7: "Compiling final determination for examiner review",
-}
+
+def _build_checklist_ctx(claim_id: str) -> dict:
+    return _PLUGIN.build_checklist_ctx(data_ctx, claim_id)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global data_ctx
-    print(f"[API] Initializing data context (mode: {DOMAIN_MODE})...")
-    data_ctx = initialize_car_data()
-    try:
-        from agents.tools_car import set_context as set_car_context
-        set_car_context(data_ctx)
-    except ImportError:
-        pass
-    # Investigation + dossier tool context
-    _inv_mod, _dossier_mod = "agents.tools_investigation_car", "agents.tools_dossier_car"
-    try:
-        import importlib
-        importlib.import_module(_inv_mod).set_context(data_ctx)
-    except (ImportError, AttributeError):
-        pass
-    try:
-        import importlib
-        importlib.import_module(_dossier_mod).set_context(data_ctx)
-    except (ImportError, AttributeError):
-        pass
+    print(f"[API] Initializing data context ({_PLUGIN.name})...")
+    data_ctx = initialize_data()
+    for fn in _PLUGIN.set_tool_context_fns:
+        try:
+            fn(data_ctx)
+        except Exception as e:
+            print(f"[API] set_context warning: {e}")
     print(f"[API] Data context ready. {len(data_ctx.case_queue)} claims loaded.")
     yield
 
 
-_APP_TITLE = "Car Insurance Examiner Workflow Copilot"
+_APP_TITLE = _PLUGIN.config.display_name
 app = FastAPI(title=_APP_TITLE, lifespan=lifespan)
 
 app.add_middleware(
@@ -129,9 +86,8 @@ def _case_to_dict(c):
         "workflow_tasks": c.workflow_tasks,
         "document_flags": c.document_flags,
         "checklist_state": c.checklist_state,
-        "employer_name": c.employer_name,
-        "member_id": c.member_id,
-        "provider_name": c.provider_name,
+        "asset_description": c.asset_description,
+        "counterparty_name": c.counterparty_name,
         "claim_amount": c.claim_amount,
         "coverage_start": c.coverage_start,
         "coverage_end": c.coverage_end,
@@ -146,13 +102,12 @@ def _case_to_dict(c):
 async def health():
     # Surface the running process's mode so a stale/wrong-domain server is obvious at a glance.
     try:
-        import agents.nodes as _nodes
-        _investigation_domain = "car" if "Car Insurance" in getattr(_nodes, "INVESTIGATION_PROMPT", "") else "unknown"
+        _investigation_domain = _PLUGIN.name
     except Exception:
         _investigation_domain = "unknown"
     return {"status": "ok", "data_loaded": data_ctx is not None,
             "claims_count": len(data_ctx.case_queue) if data_ctx else 0,
-            "domain_mode": DOMAIN_MODE,
+            "domain_mode": _PLUGIN.name,
             "demo_mode": is_demo_mode(),
             "investigation_domain": _investigation_domain}
 
@@ -162,12 +117,31 @@ async def get_config():
     if not data_ctx:
         return {"error": "Data not loaded"}
     cfg = data_ctx.domain_config
+    # Build type_labels / type_colors from claim_types so the frontend never hardcodes them.
+    _palette = [
+        ('rgba(59,130,246,0.12)',  '#60a5fa'),
+        ('rgba(34,197,94,0.12)',   '#4ade80'),
+        ('rgba(239,68,68,0.12)',   '#fca5a5'),
+        ('rgba(168,85,247,0.12)', '#c084fc'),
+        ('rgba(234,179,8,0.12)',   '#facc15'),
+        ('rgba(20,184,166,0.12)',  '#2dd4bf'),
+    ]
+    type_labels = {ct: ct.replace('_', ' ').title() for ct in cfg.claim_types}
+    type_colors = {ct: {"bg": _palette[i % len(_palette)][0], "text": _palette[i % len(_palette)][1]}
+                   for i, ct in enumerate(cfg.claim_types)}
+    entity_labels = {et: et.replace('_', ' ').title() for et in (cfg.entity_types or [])}
+    # Merge any custom entity labels the plugin exposes
+    plugin_entity_labels = getattr(_PLUGIN, 'entity_labels', {}) or {}
+    entity_labels.update(plugin_entity_labels)
     return {
         "name": cfg.name,
         "display_name": cfg.display_name,
         "claim_types": cfg.claim_types,
+        "type_labels": type_labels,
+        "type_colors": type_colors,
         "risk_tiers": cfg.risk_tiers,
         "checklist_steps": cfg.checklist_steps,
+        "entity_labels": entity_labels,
     }
 
 
@@ -368,7 +342,7 @@ async def get_claim_checklist(claim_id: str):
 
     # Build checklist context — runs live vision on the claim's evidence image when
     # present, so build off the event loop to avoid blocking on Bedrock.
-    checklist_ctx = await asyncio.to_thread(_build_car_checklist_ctx, claim_id)
+    checklist_ctx = await asyncio.to_thread(_build_checklist_ctx, claim_id)
 
     results = run_full_checklist(claim_id, checklist_ctx)
     return {
@@ -422,26 +396,6 @@ async def get_claims_stats():
     return stats
 
 
-@app.get("/api/policy-alerts")
-async def get_policy_alerts():
-    """Active policy changes affecting claims."""
-    if not data_ctx:
-        return {"error": "Data not loaded"}
-
-    alerts = []
-    for policy in data_ctx.supplemental_data.get("policies", []):
-        if policy.owner_change_date or policy.beneficiary_change_date:
-            member = data_ctx.get_member(policy.member_id)
-            alerts.append({
-                "policy_id": policy.policy_id,
-                "member_id": policy.member_id,
-                "member_name": member.full_name if member else policy.member_id,
-                "change_type": "ownership" if policy.owner_change_date else "beneficiary",
-                "change_date": policy.owner_change_date or policy.beneficiary_change_date,
-                "plan_type": policy.plan_type,
-            })
-    return {"alerts": alerts}
-
 
 # ── AI Dossier Generation ────────────────────────────────────────────────────
 
@@ -458,30 +412,30 @@ async def generate_ai_dossier(claim_id: str):
     if not case:
         return {"error": f"Claim {claim_id} not found"}
 
-    claim = data_ctx.get_claim(claim_id)
-    # Car domain: subject is the insured; the shop plays the "provider" role.
-    subject_id = getattr(claim, 'insured_id', '') if claim else ''
-    insured = data_ctx.get_insured(subject_id) if subject_id else None
-    vehicle = data_ctx.get_vehicle(claim.vehicle_id) if claim and getattr(claim, 'vehicle_id', None) else None
-    shop = data_ctx.get_shop(claim.shop_id) if claim and getattr(claim, 'shop_id', None) else None
-    policy = data_ctx.get_policy(claim.policy_id) if claim else None
-    risk = data_ctx.claim_risk_scores.get(claim_id)
-    rules = data_ctx.claim_rules.get(claim_id, [])
-    doc_results = data_ctx.claim_doc_results.get(claim_id, [])
-    tasks = data_ctx.get_claim_tasks(claim_id)
-    insured_claims = data_ctx.get_insured_claims(subject_id) if subject_id else []
+    dctx = _PLUGIN.dossier_context_fn(data_ctx, claim_id)
+    claim = dctx.get("claim")
+    subject_id = dctx.get("subject_id", "")
+    insured = dctx.get("insured")
+    vehicle = dctx.get("vehicle")
+    shop = dctx.get("shop")
+    policy = dctx.get("policy")
+    risk = dctx.get("risk")
+    rules = dctx.get("rules", [])
+    doc_results = dctx.get("doc_results", [])
+    tasks = dctx.get("tasks", [])
+    all_claims = dctx.get("all_claims", [])
+    insured_claims = [c for c in all_claims if getattr(c, 'insured_id', '') == subject_id] if subject_id else []
 
     triggered_rules = [r for r in rules if r.triggered]
     failed_docs = [d for d in doc_results if not d.passed]
     critical_docs = [d for d in failed_docs if d.severity == "CRITICAL"]
 
-    # Related claims across the book
     same_shop_claims = [
-        c for c in data_ctx.supplemental_claims
+        c for c in all_claims
         if getattr(c, 'shop_id', None) == getattr(claim, 'shop_id', None) and c.claim_id != claim_id
     ] if claim and getattr(claim, 'shop_id', None) else []
     prior_insured_claims = [
-        c for c in data_ctx.supplemental_claims
+        c for c in all_claims
         if getattr(c, 'insured_id', '') == subject_id and c.claim_id != claim_id
     ]
 
@@ -525,7 +479,7 @@ INSURED CLAIM HISTORY ({len(prior_insured_claims)} prior):
 {insured_history_lines}
 """
 
-    analyst_entity = "Car Insurance SIU"
+    analyst_entity = f"{_PLUGIN.config.display_name} SIU"
     # Build structured context for the LLM
     context_block = f"""
 CLAIM: {claim_id}
@@ -652,7 +606,7 @@ async def chat_websocket(websocket: WebSocket, claim_id: str):
         "risk_tier": risk.tier if risk else "LOW",
         "rules_triggered": len(triggered),
         "workflow_tasks": case.workflow_tasks,
-        "employer_name": case.employer_name,
+        "asset_description": case.asset_description,
         "claim_amount": case.claim_amount,
         "timestamp": datetime.now().isoformat(),
     })
@@ -666,7 +620,7 @@ async def chat_websocket(websocket: WebSocket, claim_id: str):
             # ── Progressive checklist runner ─────────────────────────────
             if data.get("action") == "run_checklist":
                 # Run vision analysis before checklist so Step 5 uses real image inspection
-                checklist_ctx = await asyncio.to_thread(_build_car_checklist_ctx, claim_id)
+                checklist_ctx = await asyncio.to_thread(_build_checklist_ctx, claim_id)
                 # Send initial checklist skeleton
                 steps_skeleton = [
                     {"step_number": sn, "step_name": sname,
@@ -823,21 +777,24 @@ def _patch_loggers(ws: WebSocket, loop: asyncio.AbstractEventLoop):
     print(f"[API] Logging to: logs/investigation_{timestamp}.txt")
 
     import agents.nodes as nodes_mod
+    import importlib
     tinv = None
     tdos = None
-    # Patch the tool modules that are actually in use for this domain so their
-    # tool:* log lines are captured to the single per-run file.
-    _inv_name, _dos_name = "agents.tools_investigation_car", "agents.tools_dossier_car"
-    try:
-        import importlib
-        tinv = importlib.import_module(_inv_name)
-    except ImportError:
-        pass
-    try:
-        import importlib
-        tdos = importlib.import_module(_dos_name)
-    except ImportError:
-        pass
+    # Derive module names from the plugin's tool function __module__ attributes.
+    _inv_tools = _PLUGIN.investigation_tools
+    _dos_tools = _PLUGIN.dossier_tools
+    _inv_name = _inv_tools[0].__module__ if _inv_tools else None
+    _dos_name = _dos_tools[0].__module__ if _dos_tools else None
+    if _inv_name:
+        try:
+            tinv = importlib.import_module(_inv_name)
+        except ImportError:
+            pass
+    if _dos_name:
+        try:
+            tdos = importlib.import_module(_dos_name)
+        except ImportError:
+            pass
 
     if _original_node_log is None:
         _original_node_log = nodes_mod._log
@@ -855,20 +812,23 @@ def _unpatch_loggers():
     global _active_ws, _active_loop, _active_log_file, _log_file_path
     import agents.nodes as nodes_mod
 
+    import importlib
     if _original_node_log:
         nodes_mod._log = _original_node_log
-    try:
-        import agents.tools_investigation as tinv
-        if _original_tool_log_inv:
-            tinv._tool_log = _original_tool_log_inv
-    except ImportError:
-        pass
-    try:
-        import agents.tools_dossier as tdos
-        if _original_tool_log_dos:
-            tdos._tool_log = _original_tool_log_dos
-    except ImportError:
-        pass
+    _inv_tools = _PLUGIN.investigation_tools
+    _dos_tools = _PLUGIN.dossier_tools
+    _inv_name = _inv_tools[0].__module__ if _inv_tools else None
+    _dos_name = _dos_tools[0].__module__ if _dos_tools else None
+    if _inv_name and _original_tool_log_inv:
+        try:
+            importlib.import_module(_inv_name)._tool_log = _original_tool_log_inv
+        except (ImportError, AttributeError):
+            pass
+    if _dos_name and _original_tool_log_dos:
+        try:
+            importlib.import_module(_dos_name)._tool_log = _original_tool_log_dos
+        except (ImportError, AttributeError):
+            pass
 
     if _active_log_file:
         try:
@@ -886,11 +846,6 @@ def _unpatch_loggers():
 def _build_investigation_query(claim_id: str, case, checklist_context: dict = None) -> str:
     """Build a focused initial query for the 3-agent orchestration scoped to one claim."""
     claim = data_ctx.get_claim(claim_id) if data_ctx else None
-    # TravelClaim uses traveler_id; supplemental health uses member_id
-    member_id = getattr(claim, 'member_id', None) if claim else None
-    traveler_id = getattr(claim, 'traveler_id', None) if claim else None
-    subject_id = member_id or traveler_id
-    member = data_ctx.get_member(member_id) if member_id else None
     risk = data_ctx.claim_risk_scores.get(claim_id) if data_ctx else None
     rules = data_ctx.claim_rules.get(claim_id, []) if data_ctx else []
     doc_results = data_ctx.claim_doc_results.get(claim_id, []) if data_ctx else []
@@ -906,10 +861,10 @@ def _build_investigation_query(claim_id: str, case, checklist_context: dict = No
     ]
     if claim:
         lines.append(f"Claim amount: ${claim.claim_amount:,.2f}")
-        lines.append(f"Provider: {getattr(claim, 'provider_id', 'N/A')}")
-        if subject_id:
-            label = "Traveler" if traveler_id else "Member"
-            lines.append(f"{label}: {subject_id}")
+        if case.counterparty_name:
+            lines.append(f"Counterparty: {case.counterparty_name}")
+        if case.asset_description:
+            lines.append(f"Asset: {case.asset_description}")
     if risk:
         lines.append(f"Risk tier: {risk.tier}")
         if risk.top_factors:
@@ -922,8 +877,6 @@ def _build_investigation_query(claim_id: str, case, checklist_context: dict = No
         lines.append(f"Document check failures ({len(failed_docs)}):")
         for d in failed_docs[:5]:
             lines.append(f"  [{d.severity}] {d.check_name}: {d.explanation}")
-    if member and getattr(member, 'suspicious_banner', False):
-        lines.append("⚠ SUSPICIOUS BANNER ACTIVE on member")
 
     if checklist_context and checklist_context.get("steps"):
         lines.append("\n--- PRIOR CHECKLIST FINDINGS ---")
@@ -933,7 +886,7 @@ def _build_investigation_query(claim_id: str, case, checklist_context: dict = No
             for f in (step.get("findings") or [])[:5]:
                 lines.append(f"  {f}")
 
-    lines.append("\nStart by scanning for suspicious entities related to this claim's provider and member, then profile them, analyze connections, and compile a complete dossier.")
+    lines.append("\nStart by scanning for suspicious entities related to this claim, then profile them, analyze connections, and compile a complete dossier.")
     return "\n".join(lines)
 
 

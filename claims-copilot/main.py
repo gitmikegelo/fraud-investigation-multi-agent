@@ -1,6 +1,4 @@
-"""Claims Examiner Workflow Copilot - Main Entry Point
-Domain: Car Insurance.
-"""
+"""Claims Examiner Workflow Copilot - Main Entry Point."""
 
 import os
 import sys
@@ -17,65 +15,58 @@ try:
 except ImportError:
     pass
 
-from domain_config import CAR_INSURANCE, DomainConfig
-from data.generate_car import generate_car_data, CarClaim
-from intelligence.rules_engine_car import run_car_rules_engine, RuleResult
-from intelligence.risk_scoring_car import score_car_claim, RiskBreakdown
-from case_queue_car import build_car_case_queue
+import domains  # noqa: F401 — registers all domain plugins
+from core.registry import get_active_plugin
+from domain_config import DomainConfig
+from intelligence.rules_engine_car import RuleResult
+from intelligence.risk_scoring_car import RiskBreakdown
 from cases import Case, CaseType, ClaimType, CasePriority, CaseStatus
-
-# Domain is locked to "car".
-DOMAIN_MODE = "car"
 
 
 @dataclass
 class DataContext:
-    """Container for all car insurance data.
-
-    Field names are kept as `supplemental_*` for backward compatibility with the
-    rest of the codebase — they are domain-neutral containers that here hold car data.
-    """
+    """Domain-neutral container for all active domain data."""
     domain_config: DomainConfig
-    supplemental_data: Dict
-    supplemental_claims: List
-    supplemental_graph: nx.DiGraph
+    entities: Dict           # keyed by entity-type plural, e.g. "insureds", "vehicles"
+    claims: List             # the flat list of domain claim objects
+    graph: nx.DiGraph        # entity relationship graph
     detected_patterns: List
     case_queue: List[Case] = field(default_factory=list)
     claim_rules: Dict[str, List[RuleResult]] = field(default_factory=dict)
     claim_risk_scores: Dict[str, RiskBreakdown] = field(default_factory=dict)
     claim_doc_results: Dict[str, list] = field(default_factory=dict)
 
-    def get_claim(self, claim_id: str) -> Optional[CarClaim]:
-        return next((c for c in self.supplemental_claims if c.claim_id == claim_id), None)
+    def get_claim(self, claim_id: str):
+        return next((c for c in self.claims if c.claim_id == claim_id), None)
 
     def get_case(self, case_id: str) -> Optional[Case]:
         return next((c for c in self.case_queue if c.case_id == case_id), None)
 
     def get_insured(self, insured_id: str):
-        return next((i for i in self.supplemental_data.get("insureds", [])
+        return next((i for i in self.entities.get("insureds", [])
                      if i.insured_id == insured_id), None)
 
     def get_insured_claims(self, insured_id: str) -> List:
-        return [c for c in self.supplemental_claims if c.insured_id == insured_id]
+        return [c for c in self.claims if c.insured_id == insured_id]
 
     def get_policy(self, policy_id: str):
-        return next((p for p in self.supplemental_data.get("policies", [])
+        return next((p for p in self.entities.get("policies", [])
                      if p.policy_id == policy_id), None)
 
     def get_vehicle(self, vehicle_id: str):
-        return next((v for v in self.supplemental_data.get("vehicles", [])
+        return next((v for v in self.entities.get("vehicles", [])
                      if v.vehicle_id == vehicle_id), None)
 
     def get_shop(self, shop_id: str):
-        return next((s for s in self.supplemental_data.get("repair_shops", [])
+        return next((s for s in self.entities.get("repair_shops", [])
                      if s.shop_id == shop_id), None)
 
     def get_claim_tasks(self, claim_id: str) -> List:
-        return [t for t in self.supplemental_data.get("workflow_tasks", [])
+        return [t for t in self.entities.get("workflow_tasks", [])
                 if t.claim_id == claim_id]
 
     def get_document(self, claim_id: str):
-        return next((d for d in self.supplemental_data.get("documents", [])
+        return next((d for d in self.entities.get("documents", [])
                      if d.claim_id == claim_id), None)
 
     def get_high_risk_claims(self, min_score: float = 65) -> List[Case]:
@@ -93,7 +84,7 @@ class DataContext:
                 if r.triggered:
                     rule_counts[r.rule_id] = rule_counts.get(r.rule_id, 0) + 1
 
-        tasks = self.supplemental_data.get("workflow_tasks", [])
+        tasks = self.entities.get("workflow_tasks", [])
         open_estimate = sum(1 for t in tasks if t.task_type == "ESTIMATE_REVIEW" and t.status in ("pending", "in_progress"))
         pending_injury = sum(1 for t in tasks if t.task_type == "INJURY_REVIEW" and t.status in ("pending", "in_progress"))
         past_tat = sum(1 for t in tasks if t.status == "overdue")
@@ -110,86 +101,88 @@ class DataContext:
         }
 
 
-def initialize_car_data(force_regenerate: bool = False) -> DataContext:
-    """Initialize Car Insurance domain data."""
-    cache_file = 'data_cache_v1_car.pkl'
+def initialize_data(force_regenerate: bool = False) -> DataContext:
+    """Initialize domain data using the active plugin."""
+    PLUGIN = get_active_plugin()
+    cache_file = f"data_cache_{PLUGIN.name}.pkl"
+    domain_stamp = PLUGIN.name
 
     if not force_regenerate and os.path.exists(cache_file):
         print("=" * 60)
-        print("CAR INSURANCE COPILOT - Loading Cache")
+        print(f"{PLUGIN.config.display_name} - Loading Cache")
         print("=" * 60)
         try:
             with open(cache_file, 'rb') as f:
-                ctx = pickle.load(f)
-            print(f"✅ Cache loaded ({len(ctx.case_queue)} claims)")
-            return ctx
+                cached = pickle.load(f)
+            # Reject stale cache from a different domain.
+            if isinstance(cached, tuple) and cached[0] == domain_stamp:
+                ctx = cached[1]
+                print(f"Cache loaded ({len(ctx.case_queue)} claims)")
+                return ctx
+            else:
+                print("Cache domain mismatch — regenerating...")
         except Exception as e:
-            print(f"⚠️ Cache load failed: {e}\nRegenerating...")
+            print(f"Cache load failed: {e} — regenerating...")
 
     print("=" * 60)
-    print("CAR INSURANCE COPILOT - Initializing")
+    print(f"{PLUGIN.config.display_name} - Initializing")
     print("=" * 60)
 
-    config = CAR_INSURANCE
+    config = PLUGIN.config
 
-    print("\n[1/5] Generating car insurance data...")
-    data = generate_car_data()
+    print(f"\n[1/5] Generating {PLUGIN.name} data...")
+    data = PLUGIN.generate_fn()
     claims = data["claims"]
 
-    context_dict = {
-        "claims": claims,
-        "insureds": data["insureds"],
-        "vehicles": data["vehicles"],
-        "repair_shops": data["repair_shops"],
-        "policies": data["policies"],
-        "estimates": data["estimates"],
-        "police_reports": data["police_reports"],
-        "workflow_tasks": data["workflow_tasks"],
-        "documents": data["documents"],
-    }
+    context_dict = {"claims": claims}
+    for key in PLUGIN.context_keys:
+        if key != "claims" and key in data:
+            context_dict[key] = data[key]
 
-    print(f"\n[2/5] Running car rules engine on {len(claims)} claims...")
+    print(f"\n[2/5] Running rules engine on {len(claims)} claims...")
     claim_rules = {}
     for claim in claims:
-        claim_rules[claim.claim_id] = run_car_rules_engine(claim, context_dict)
+        claim_rules[claim.claim_id] = PLUGIN.rules_fn(claim, context_dict)
     triggered_count = sum(1 for rules in claim_rules.values() for r in rules if r.triggered)
-    print(f"  → {triggered_count} total rule triggers across all claims")
+    print(f"  -> {triggered_count} total rule triggers across all claims")
 
     print(f"\n[3/5] Scoring claims...")
     claim_risk_scores = {}
     for claim in claims:
-        claim_risk_scores[claim.claim_id] = score_car_claim(claim, context_dict, claim_rules.get(claim.claim_id, []))
+        claim_risk_scores[claim.claim_id] = PLUGIN.score_fn(claim, context_dict, claim_rules.get(claim.claim_id, []))
     high = sum(1 for s in claim_risk_scores.values() if s.tier == "HIGH")
     med = sum(1 for s in claim_risk_scores.values() if s.tier == "MEDIUM")
     low = sum(1 for s in claim_risk_scores.values() if s.tier == "LOW")
-    print(f"  → HIGH: {high}, MEDIUM: {med}, LOW: {low}")
+    print(f"  -> HIGH: {high}, MEDIUM: {med}, LOW: {low}")
 
     print(f"\n[4/5] Building case queue...")
-    case_queue = build_car_case_queue(claims, claim_risk_scores, claim_rules, data)
-    print(f"  → {len(case_queue)} cases in queue")
+    case_queue = PLUGIN.build_queue_fn(claims, claim_risk_scores, claim_rules, data)
+    print(f"  -> {len(case_queue)} cases in queue")
 
     # No cached vision results — vision runs live in api.py when an image exists.
-    claim_doc_results = {doc.claim_id: [] for doc in data["documents"]}
+    claim_doc_results = {doc.claim_id: [] for doc in data.get("documents", [])}
 
     print(f"\n[5/5] Building entity graph...")
     graph = nx.DiGraph()
-    for ins in data["insureds"]:
-        graph.add_node(ins.insured_id, entity_type="insured", name=ins.full_name)
-    for v in data["vehicles"]:
-        graph.add_node(v.vehicle_id, entity_type="vehicle", name=f"{v.year} {v.make} {v.model}")
-    for s in data["repair_shops"]:
-        graph.add_node(s.shop_id, entity_type="repair_shop", name=s.name)
+    for et in PLUGIN.entity_types:
+        for ent in data.get(et, []):
+            node_id = getattr(ent, f"{et[:-1]}_id", None) or getattr(ent, "id", str(ent))
+            label = getattr(ent, "full_name", None) or getattr(ent, "name", str(node_id))
+            graph.add_node(node_id, entity_type=et[:-1], name=label)
     for c in claims:
-        if c.vehicle_id:
-            graph.add_edge(c.insured_id, c.vehicle_id, relationship="OWNS", claim_id=c.claim_id)
-        if c.shop_id:
-            graph.add_edge(c.insured_id, c.shop_id, relationship="REPAIRED_AT", claim_id=c.claim_id)
+        insured_id = getattr(c, "insured_id", None)
+        vehicle_id = getattr(c, "vehicle_id", None)
+        shop_id = getattr(c, "shop_id", None)
+        if insured_id and vehicle_id:
+            graph.add_edge(insured_id, vehicle_id, relationship="OWNS", claim_id=c.claim_id)
+        if insured_id and shop_id:
+            graph.add_edge(insured_id, shop_id, relationship="REPAIRED_AT", claim_id=c.claim_id)
 
     ctx = DataContext(
         domain_config=config,
-        supplemental_data=data,
-        supplemental_claims=claims,
-        supplemental_graph=graph,
+        entities=data,
+        claims=claims,
+        graph=graph,
         detected_patterns=[],
         case_queue=case_queue,
         claim_rules=claim_rules,
@@ -197,27 +190,33 @@ def initialize_car_data(force_regenerate: bool = False) -> DataContext:
         claim_doc_results=claim_doc_results,
     )
 
-    print("\n💾 Saving cache...")
+    print("\nSaving cache...")
     try:
         with open(cache_file, 'wb') as f:
-            pickle.dump(ctx, f)
-        print(f"✅ Cached to {cache_file}")
+            pickle.dump((domain_stamp, ctx), f)
+        print(f"Cached to {cache_file}")
     except Exception as e:
-        print(f"⚠️ Cache save failed: {e}")
+        print(f"Cache save failed: {e}")
 
     print("\n" + "=" * 60)
-    print("CAR INSURANCE INITIALIZATION COMPLETE")
+    print(f"{PLUGIN.name.upper()} INITIALIZATION COMPLETE")
     print(f"  {len(case_queue)} claims | {high} HIGH | {med} MEDIUM | {low} LOW")
     print("=" * 60)
     return ctx
 
 
+def initialize_car_data(force_regenerate: bool = False) -> DataContext:
+    """Shim kept for test compatibility — delegates to initialize_data()."""
+    return initialize_data(force_regenerate=force_regenerate)
+
+
 def run_demo():
-    ctx = initialize_car_data()
+    ctx = initialize_data()
     stats = ctx.get_stats()
+    PLUGIN = get_active_plugin()
 
     print("\n" + "=" * 60)
-    print("DEMO: Car Insurance Claims Overview")
+    print(f"DEMO: {PLUGIN.config.display_name} Overview")
     print("=" * 60)
 
     print(f"\nTotal claims: {stats['total_claims']}")

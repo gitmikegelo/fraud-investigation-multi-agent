@@ -3,8 +3,8 @@ Investigation Agent Tools (Car) — 7 tools for Car Insurance fraud detection.
 
 Operates on car entities: insureds (INS), repair shops (SHP), and vehicles (VEH).
 The DataContext stores car data under the (legacy-named) supplemental_* fields:
-  - supplemental_claims         → List[CarClaim]
-  - supplemental_data["insureds"|"repair_shops"|"vehicles"|"policies"|...]
+  - claims         → List[CarClaim]
+  - entities["insureds"|"repair_shops"|"vehicles"|"policies"|...]
 """
 
 import time
@@ -50,23 +50,23 @@ def set_context(ctx):
 
 # ---- entity accessors (car) -----------------------------------------------
 def _insureds() -> List:
-    return _context.supplemental_data.get("insureds", []) if _context else []
+    return _context.entities.get("insureds", []) if _context else []
 
 
 def _shops() -> List:
-    return _context.supplemental_data.get("repair_shops", []) if _context else []
+    return _context.entities.get("repair_shops", []) if _context else []
 
 
 def _vehicles() -> List:
-    return _context.supplemental_data.get("vehicles", []) if _context else []
+    return _context.entities.get("vehicles", []) if _context else []
 
 
 def _policies() -> List:
-    return _context.supplemental_data.get("policies", []) if _context else []
+    return _context.entities.get("policies", []) if _context else []
 
 
 def _claims() -> List:
-    return _context.supplemental_claims if _context else []
+    return _context.claims if _context else []
 
 
 def _get_insured(iid: str):
@@ -378,7 +378,7 @@ def find_connections(
     if _context is None:
         return {"error": "DataContext not initialised"}
 
-    G = _context.supplemental_graph
+    G = _context.graph
     if entity_id not in G:
         return {"error": f"Entity {entity_id} not in graph"}
 

@@ -1,29 +1,16 @@
-"""7-step investigation checklist for Car Insurance claims."""
+"""7-step investigation checklist for Car Insurance claims.
+
+CHECKLIST is the single source of truth.  CHECKLIST_STEPS (the list of
+(step_number, name) tuples consumed by api.py) is derived from it, so the
+two can never drift.  run_full_checklist / run_checklist_step preserve the
+existing public interface that api.py depends on.
+"""
 
 from dataclasses import dataclass, field
 from typing import Dict, List
 from datetime import datetime
 
-
-@dataclass
-class ChecklistStepResult:
-    step_number: int
-    step_name: str
-    status: str  # pass, fail, needs_review, not_run, error
-    auto_passed: bool
-    findings: List[str] = field(default_factory=list)
-    details: Dict = field(default_factory=dict)
-
-
-CHECKLIST_STEPS = [
-    (1, "Initial Review"),
-    (2, "Damage Documentation"),
-    (3, "Coverage Timeline"),
-    (4, "Document AI Review"),
-    (5, "Repair Shop Verification"),
-    (6, "Policy & Coverage"),
-    (7, "Final Determination"),
-]
+from core.engine import Step, ChecklistStepResult, run_checklist, run_checklist_step_spec
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -71,47 +58,33 @@ def _get_claim_doc_results(context, claim_id):
     return context.get("claim_doc_results", {}).get(claim_id, [])
 
 
-# ── Step Implementations ──────────────────────────────────────────────────────
+# ── Step check functions (irreducibly procedural logic) ───────────────────────
 
-def _step_initial_review(claim, context) -> ChecklistStepResult:
-    """Step 1: Claim has required fields — insured, policy, claim type, amount, incident date."""
+def _initial_review(claim, context) -> ChecklistStepResult:
     findings = []
     all_ok = True
-
-    if not getattr(claim, 'insured_id', None):
-        findings.append("MISSING: Insured ID")
-        all_ok = False
-    if not getattr(claim, 'policy_id', None):
-        findings.append("MISSING: Policy ID")
-        all_ok = False
-    if not getattr(claim, 'claim_type', None):
-        findings.append("MISSING: Claim type")
-        all_ok = False
-    if not getattr(claim, 'date_of_incident', None):
-        findings.append("MISSING: Date of incident")
-        all_ok = False
+    for attr, label in [("insured_id", "Insured ID"), ("policy_id", "Policy ID"),
+                        ("claim_type", "Claim type"), ("date_of_incident", "Date of incident")]:
+        if not getattr(claim, attr, None):
+            findings.append(f"MISSING: {label}")
+            all_ok = False
     if claim.claim_amount <= 0:
         findings.append("WARNING: Claim amount is zero or negative")
         all_ok = False
-
     tasks = _get_claim_tasks(context, claim.claim_id)
     if any(t.task_type == "INITIAL_REVIEW" for t in tasks):
         findings.append("INITIAL_REVIEW task assigned")
     else:
         findings.append("MISSING: No INITIAL_REVIEW task assigned")
         all_ok = False
-
     if all_ok:
         findings.insert(0, "All required fields present")
-
     return ChecklistStepResult(1, "Initial Review", "pass" if all_ok else "needs_review", all_ok, findings)
 
 
-def _step_damage_documentation(claim, context) -> ChecklistStepResult:
-    """Step 2: Repair estimate / damage evidence present and consistent."""
+def _damage_documentation(claim, context) -> ChecklistStepResult:
     findings = []
     all_ok = True
-
     estimate = _get_estimate(context, claim)
     if claim.claim_type in ("collision", "comprehensive", "liability"):
         if estimate:
@@ -121,8 +94,6 @@ def _step_damage_documentation(claim, context) -> ChecklistStepResult:
             all_ok = False
     elif claim.claim_type == "theft":
         findings.append("Total-loss / theft claim — no repair estimate expected")
-
-    # Evidence-image vision analysis (e.g. damage photo, repair estimate scan)
     doc_results = _get_claim_doc_results(context, claim.claim_id)
     if doc_results:
         failed = [d for d in doc_results if not d.passed]
@@ -130,9 +101,7 @@ def _step_damage_documentation(claim, context) -> ChecklistStepResult:
         warnings = [d for d in failed if d.severity == "WARNING"]
         assessment = next(
             (d.details.get("overall_assessment") for d in doc_results
-             if isinstance(getattr(d, "details", None), dict) and d.details.get("overall_assessment")),
-            "",
-        )
+             if isinstance(getattr(d, "details", None), dict) and d.details.get("overall_assessment")), "")
         if not failed:
             findings.append(f"Evidence image passed all {len(doc_results)} authenticity checks")
         else:
@@ -143,38 +112,31 @@ def _step_damage_documentation(claim, context) -> ChecklistStepResult:
             all_ok = False
         if assessment:
             findings.append(f"Vision assessment: {assessment}")
-
-    # R-002: no repair estimate
     rules = _get_claim_rules(context, claim.claim_id)
     r002 = next((r for r in rules if r.rule_id == "R-002"), None)
     if r002 and r002.triggered:
         findings.append(f"BLOCK R-002: {r002.explanation}")
         all_ok = False
-
     return ChecklistStepResult(2, "Damage Documentation", "pass" if all_ok else "needs_review", all_ok, findings)
 
 
-def _step_coverage_timeline(claim, context) -> ChecklistStepResult:
-    """Step 3: Incident within the policy coverage period; policy not effective after incident."""
+def _coverage_timeline(claim, context) -> ChecklistStepResult:
     findings = []
     all_ok = True
-
-    policy = _get_policy(context, getattr(claim, 'policy_id', ''))
+    policy = _get_policy(context, getattr(claim, "policy_id", ""))
     if not policy:
         return ChecklistStepResult(3, "Coverage Timeline", "fail", False, ["Policy not found"])
-
-    incident_date = getattr(claim, 'date_of_incident', '')
-    effective = getattr(policy, 'effective_date', '')
-    expiration = getattr(policy, 'expiration_date', '')
-
+    incident_date = getattr(claim, "date_of_incident", "")
+    effective = getattr(policy, "effective_date", "")
+    expiration = getattr(policy, "expiration_date", "")
     if incident_date and effective and expiration:
         try:
-            incident_dt = datetime.strptime(incident_date, "%Y-%m-%d")
-            eff_dt = datetime.strptime(effective, "%Y-%m-%d")
-            exp_dt = datetime.strptime(expiration, "%Y-%m-%d")
-            if eff_dt <= incident_dt <= exp_dt:
+            inc = datetime.strptime(incident_date, "%Y-%m-%d")
+            eff = datetime.strptime(effective, "%Y-%m-%d")
+            exp = datetime.strptime(expiration, "%Y-%m-%d")
+            if eff <= inc <= exp:
                 findings.append(f"Incident {incident_date} within coverage period ({effective} → {expiration})")
-            elif incident_dt < eff_dt:
+            elif inc < eff:
                 findings.append(f"BLOCK: Incident {incident_date} BEFORE policy effective {effective}")
                 all_ok = False
             else:
@@ -182,69 +144,53 @@ def _step_coverage_timeline(claim, context) -> ChecklistStepResult:
                 all_ok = False
         except ValueError:
             findings.append("WARNING: Could not parse coverage dates")
-
-    # R-001: policy effective after incident
     rules = _get_claim_rules(context, claim.claim_id)
     r001 = next((r for r in rules if r.rule_id == "R-001"), None)
     if r001 and r001.triggered:
         findings.append(f"BLOCK R-001: {r001.explanation}")
         all_ok = False
-
     return ChecklistStepResult(3, "Coverage Timeline", "pass" if all_ok else "needs_review", all_ok, findings)
 
 
-def _step_fraud_screening(claim, context) -> ChecklistStepResult:
-    """Step 4: Document AI review + rules triggered, risk score, serial claimer flag."""
+def _fraud_screening(claim, context) -> ChecklistStepResult:
     findings = []
     rules = _get_claim_rules(context, claim.claim_id)
     risk = _get_claim_risk(context, claim.claim_id)
-
     doc_results = _get_claim_doc_results(context, claim.claim_id)
-    is_vision = any(getattr(d, 'details', {}).get('source') == 'vision_ai' for d in doc_results)
+    is_vision = any(getattr(d, "details", {}).get("source") == "vision_ai" for d in doc_results)
     has_images = context.get("has_claim_images", False)
     image_details = {}
     if is_vision or has_images:
-        image_details = {
-            "has_document_image": True,
-            "image_url": f"/api/claims/{claim.claim_id}/document-image",
-        }
-
-    insured = _get_insured(context, getattr(claim, 'insured_id', ''))
-    is_serial = getattr(insured, 'claim_history_count', 0) >= 3 if insured else False
-    is_flagged = getattr(insured, 'flagged', False) if insured else False
-
+        image_details = {"has_document_image": True,
+                         "image_url": f"/api/claims/{claim.claim_id}/document-image"}
+    insured = _get_insured(context, getattr(claim, "insured_id", ""))
+    is_serial = getattr(insured, "claim_history_count", 0) >= 3 if insured else False
+    is_flagged = getattr(insured, "flagged", False) if insured else False
     if is_flagged or is_serial:
         findings.append(f"⚠️ INSURED FLAGGED — claim_history_count: {getattr(insured, 'claim_history_count', 0)}")
         findings.append("Routing to senior examiner review path")
-
     risk_score = risk.total_score if risk else 0
     block_rules = [r for r in rules if r.triggered and r.severity == "BLOCK"]
     flag_rules = [r for r in rules if r.triggered and r.severity == "FLAG"]
-
     for br in block_rules:
         findings.append(f"BLOCK {br.rule_id}: {br.explanation}")
     for fr in flag_rules:
         findings.append(f"FLAG {fr.rule_id}: {fr.explanation}")
     if not block_rules and not flag_rules:
         findings.append("No BLOCK or FLAG rules triggered")
-
     findings.append(f"Risk score: {risk_score:.1f} ({risk.tier if risk else 'UNKNOWN'})")
-
     if risk_score < 30 and not block_rules and not is_flagged:
         return ChecklistStepResult(4, "Document AI Review", "pass", True, findings,
                                    {"risk_score": risk_score, "auto_passed": True, **image_details})
-
     status = "fail" if block_rules else "needs_review"
     return ChecklistStepResult(4, "Document AI Review", status, False, findings,
                                {"risk_score": risk_score, **image_details})
 
 
-def _step_shop_verification(claim, context) -> ChecklistStepResult:
-    """Step 5: Repair shop not on watchlist; estimate consistent with vehicle value."""
+def _shop_verification(claim, context) -> ChecklistStepResult:
     findings = []
     all_ok = True
-
-    shop_id = getattr(claim, 'shop_id', None)
+    shop_id = getattr(claim, "shop_id", None)
     if shop_id:
         shop = _get_shop(context, shop_id)
         if shop:
@@ -264,9 +210,7 @@ def _step_shop_verification(claim, context) -> ChecklistStepResult:
         else:
             findings.append("WARNING: Damage claim has no repair shop on record")
             all_ok = False
-
-    # Estimate vs ACV
-    vehicle = _get_vehicle(context, getattr(claim, 'vehicle_id', ''))
+    vehicle = _get_vehicle(context, getattr(claim, "vehicle_id", ""))
     if vehicle and vehicle.acv:
         ratio = claim.claim_amount / vehicle.acv if vehicle.acv > 0 else 0
         if ratio > 1.1:
@@ -274,39 +218,32 @@ def _step_shop_verification(claim, context) -> ChecklistStepResult:
             all_ok = False
         else:
             findings.append(f"Claim amount consistent with vehicle ACV ${vehicle.acv:,.2f}")
-
-    # R-004 / R-005
     rules = _get_claim_rules(context, claim.claim_id)
     for rid in ("R-004", "R-005"):
         r = next((x for x in rules if x.rule_id == rid), None)
         if r and r.triggered:
             findings.append(f"{r.severity} {r.rule_id}: {r.explanation}")
             all_ok = False
-
     return ChecklistStepResult(5, "Repair Shop Verification", "pass" if all_ok else "needs_review", all_ok, findings)
 
 
-def _step_policy_coverage(claim, context) -> ChecklistStepResult:
-    """Step 6: Coverage type matches claim type; amount within limits."""
+def _policy_coverage(claim, context) -> ChecklistStepResult:
     findings = []
     all_ok = True
-
-    policy = _get_policy(context, getattr(claim, 'policy_id', ''))
+    policy = _get_policy(context, getattr(claim, "policy_id", ""))
     if not policy:
         return ChecklistStepResult(6, "Policy & Coverage", "fail", False, ["Policy not found"])
-
     if policy.status != "active":
         findings.append(f"FAIL: Policy status is {policy.status}")
         all_ok = False
     else:
         findings.append("Policy is active")
-
     coverage_map = {
-        "collision": getattr(policy, 'coverage_collision', 0),
-        "comprehensive": getattr(policy, 'coverage_comprehensive', 0),
-        "theft": getattr(policy, 'coverage_comprehensive', 0),
-        "liability": getattr(policy, 'coverage_liability', 0),
-        "medical_payments": getattr(policy, 'coverage_medical_payments', 0),
+        "collision": getattr(policy, "coverage_collision", 0),
+        "comprehensive": getattr(policy, "coverage_comprehensive", 0),
+        "theft": getattr(policy, "coverage_comprehensive", 0),
+        "liability": getattr(policy, "coverage_liability", 0),
+        "medical_payments": getattr(policy, "coverage_medical_payments", 0),
     }
     coverage_limit = coverage_map.get(claim.claim_type, 0)
     if coverage_limit > 0:
@@ -317,12 +254,10 @@ def _step_policy_coverage(claim, context) -> ChecklistStepResult:
             all_ok = False
     else:
         findings.append(f"Coverage limit not defined for {claim.claim_type}")
-
     return ChecklistStepResult(6, "Policy & Coverage", "pass" if all_ok else "needs_review", all_ok, findings)
 
 
-def _step_final_determination(claim, context) -> ChecklistStepResult:
-    """Step 7: Always manual — examiner approves/denies/escalates."""
+def _final_determination(claim, context) -> ChecklistStepResult:
     return ChecklistStepResult(
         7, "Final Determination", "needs_review", False,
         ["Awaiting examiner determination: APPROVE / DENY / ESCALATE TO SIU"],
@@ -330,30 +265,41 @@ def _step_final_determination(claim, context) -> ChecklistStepResult:
     )
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+# ── CHECKLIST — single source of truth ───────────────────────────────────────
+
+CHECKLIST: List[Step] = [
+    Step(id="initial_review",       name="Initial Review",           check=_initial_review),
+    Step(id="damage_documentation", name="Damage Documentation",     check=_damage_documentation),
+    Step(id="coverage_timeline",    name="Coverage Timeline",        check=_coverage_timeline,
+         config={"acv_ratio_threshold": 1.1}),
+    Step(id="fraud_screening",      name="Document AI Review",       check=_fraud_screening),
+    Step(id="shop_verification",    name="Repair Shop Verification", check=_shop_verification),
+    Step(id="policy_coverage",      name="Policy & Coverage",        check=_policy_coverage),
+    Step(id="final_determination",  name="Final Determination",      check=_final_determination),
+]
+
+# Derived — api.py reads this; it can never drift from CHECKLIST names.
+CHECKLIST_STEPS = [(i + 1, step.name) for i, step in enumerate(CHECKLIST)]
+
+
+# ── Public API (unchanged interface for api.py) ───────────────────────────────
 
 def run_checklist_step(step_number: int, claim_id: str, context: Dict) -> ChecklistStepResult:
-    """Run a single checklist step for a car claim."""
+    """Run a single checklist step (1-indexed)."""
     claim = _get_claim(context, claim_id)
     if not claim:
-        return ChecklistStepResult(step_number, CHECKLIST_STEPS[step_number - 1][1],
-                                   "error", False, ["Claim not found"])
-
-    dispatch = {
-        1: _step_initial_review,
-        2: _step_damage_documentation,
-        3: _step_coverage_timeline,
-        4: _step_fraud_screening,
-        5: _step_shop_verification,
-        6: _step_policy_coverage,
-        7: _step_final_determination,
-    }
-    fn = dispatch.get(step_number)
-    if not fn:
+        name = CHECKLIST[step_number - 1].name if 0 < step_number <= len(CHECKLIST) else "Unknown"
+        return ChecklistStepResult(step_number, name, "error", False, ["Claim not found"])
+    if not (1 <= step_number <= len(CHECKLIST)):
         return ChecklistStepResult(step_number, "Unknown", "error", False, ["Invalid step number"])
-    return fn(claim, context)
+    result = run_checklist_step_spec(CHECKLIST[step_number - 1], claim, context)
+    result.step_number = step_number   # ensure number matches position
+    return result
 
 
 def run_full_checklist(claim_id: str, context: Dict) -> List[ChecklistStepResult]:
-    """Run all 7 checklist steps for a car claim."""
-    return [run_checklist_step(i, claim_id, context) for i in range(1, 8)]
+    """Run all checklist steps for a car claim."""
+    results = run_checklist(CHECKLIST, claim_id, context)
+    for i, r in enumerate(results):
+        r.step_number = i + 1
+    return results

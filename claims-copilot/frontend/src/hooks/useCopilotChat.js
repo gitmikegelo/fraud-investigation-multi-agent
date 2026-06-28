@@ -12,7 +12,8 @@ export function useCopilotChat(caseId) {
 
   const connect = useCallback(() => {
     if (!caseId) return
-    const url = `ws://${window.location.hostname}:8000/ws/chat/${caseId}`
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const url = `${protocol}://${window.location.host}/ws/chat/${caseId}`
     const ws = new WebSocket(url)
     wsRef.current = ws
 

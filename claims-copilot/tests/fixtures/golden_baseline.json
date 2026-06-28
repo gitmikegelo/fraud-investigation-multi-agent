@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "total_cases": 45,
+    "tier_counts": {
+      "HIGH": 4,
+      "MEDIUM": 3,
+      "LOW": 38
+    },
+    "top10_queue_ids": [
+      "COL-107",
+      "COL-005",
+      "THEFT-009",
+      "LIAB-002",
+      "THEFT-004",
+      "LIAB-021",
+      "LIAB-006",
+      "COL-004",
+      "COL-007",
+      "LIAB-003"
+    ]
+  },
+  "hero_cases": {
+    "COL-107": {
+      "claim_id": "COL-107",
+      "risk_score": 98.4,
+      "risk_tier": "HIGH",
+      "rules_boost": 36.0,
+      "triggered_rule_ids": [
+        "R-004",
+        "R-005",
+        "R-006"
+      ],
+      "queue_position": 0
+    },
+    "THEFT-009": {
+      "claim_id": "THEFT-009",
+      "risk_score": 73.0,
+      "risk_tier": "HIGH",
+      "rules_boost": 28.0,
+      "triggered_rule_ids": [
+        "R-001",
+        "R-005"
+      ],
+      "queue_position": 2
+    },
+    "LIAB-021": {
+      "claim_id": "LIAB-021",
+      "risk_score": 39.0,
+      "risk_tier": "MEDIUM",
+      "rules_boost": 16.0,
+      "triggered_rule_ids": [
+        "R-005",
+        "R-006"
+      ],
+      "queue_position": 5
+    }
+  }
+}

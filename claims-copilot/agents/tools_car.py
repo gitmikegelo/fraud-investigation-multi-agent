@@ -17,27 +17,27 @@ def _tool_log(name: str, msg: str):
 
 
 def _get_claim(claim_id: str):
-    return next((c for c in _context.supplemental_claims if c.claim_id == claim_id), None)
+    return next((c for c in _context.claims if c.claim_id == claim_id), None)
 
 
 def _get_insured(insured_id: str):
-    return next((i for i in _context.supplemental_data.get("insureds", []) if i.insured_id == insured_id), None)
+    return next((i for i in _context.entities.get("insureds", []) if i.insured_id == insured_id), None)
 
 
 def _get_policy(policy_id: str):
-    return next((p for p in _context.supplemental_data.get("policies", []) if p.policy_id == policy_id), None)
+    return next((p for p in _context.entities.get("policies", []) if p.policy_id == policy_id), None)
 
 
 def _get_vehicle(vehicle_id: str):
-    return next((v for v in _context.supplemental_data.get("vehicles", []) if v.vehicle_id == vehicle_id), None)
+    return next((v for v in _context.entities.get("vehicles", []) if v.vehicle_id == vehicle_id), None)
 
 
 def _get_shop(shop_id: str):
-    return next((s for s in _context.supplemental_data.get("repair_shops", []) if s.shop_id == shop_id), None)
+    return next((s for s in _context.entities.get("repair_shops", []) if s.shop_id == shop_id), None)
 
 
 def _get_estimate(claim):
-    ests = _context.supplemental_data.get("estimates", [])
+    ests = _context.entities.get("estimates", [])
     by_id = next((e for e in ests if e.estimate_id == getattr(claim, "estimate_id", None)), None)
     if by_id:
         return by_id
@@ -124,7 +124,7 @@ def check_claim_history(
         return {"error": f"Claim {claim_id} not found"}
 
     insured = _get_insured(claim.insured_id)
-    all_claims = [c for c in _context.supplemental_claims if c.insured_id == claim.insured_id]
+    all_claims = [c for c in _context.claims if c.insured_id == claim.insured_id]
 
     type_counts = {}
     for c in all_claims:
@@ -218,7 +218,7 @@ def check_repair_shop_risk(
     if not shop.verified:
         flags.append(f"Shop unverified: {shop.name}")
 
-    shop_claims = [c for c in _context.supplemental_claims
+    shop_claims = [c for c in _context.claims
                    if c.shop_id == claim.shop_id and c.claim_id != claim_id]
 
     return {
@@ -244,7 +244,7 @@ def analyze_documents(
     if not claim:
         return {"error": f"Claim {claim_id} not found"}
 
-    docs = [d for d in _context.supplemental_data.get("documents", []) if d.claim_id == claim_id]
+    docs = [d for d in _context.entities.get("documents", []) if d.claim_id == claim_id]
     flags = []
     if not docs:
         flags.append("No documents on file for this claim")
@@ -292,13 +292,13 @@ def find_related_claims(
     if not claim:
         return {"error": f"Claim {claim_id} not found"}
 
-    same_insured = [c for c in _context.supplemental_claims
+    same_insured = [c for c in _context.claims
                     if c.insured_id == claim.insured_id and c.claim_id != claim_id]
-    same_vehicle = [c for c in _context.supplemental_claims
+    same_vehicle = [c for c in _context.claims
                     if c.vehicle_id == claim.vehicle_id and c.claim_id != claim_id]
     same_shop = []
     if claim.shop_id:
-        same_shop = [c for c in _context.supplemental_claims
+        same_shop = [c for c in _context.claims
                      if c.shop_id == claim.shop_id and c.claim_id != claim_id]
 
     def _brief(c):
@@ -321,7 +321,7 @@ def check_workflow_tasks(
 ) -> Dict:
     """Check workflow task status: INITIAL_REVIEW, ESTIMATE_REVIEW, SHOP_VERIFICATION, INJURY_REVIEW."""
     _tool_log("check_workflow_tasks", f"Checking {claim_id}")
-    tasks = [t for t in _context.supplemental_data.get("workflow_tasks", []) if t.claim_id == claim_id]
+    tasks = [t for t in _context.entities.get("workflow_tasks", []) if t.claim_id == claim_id]
     task_list = [{
         "task_id": t.task_id, "type": t.task_type, "status": t.status,
         "assigned_date": t.assigned_date, "due_date": t.due_date, "days_waiting": t.days_waiting,

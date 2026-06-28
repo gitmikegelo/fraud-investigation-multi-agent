@@ -6,21 +6,7 @@ const PRIORITY_COLORS = {
   LOW:    { dot: '#6b7280', bg: 'rgba(107,114,128,0.08)', text: '#9ca3af' },
 }
 
-const TYPE_LABELS = {
-  collision:        'Collision',
-  comprehensive:    'Comprehensive',
-  theft:            'Theft',
-  liability:        'Liability',
-  medical_payments: 'Medical Pay',
-}
-
-const TYPE_COLORS = {
-  collision:        { bg: 'rgba(59,130,246,0.12)', text: '#60a5fa' },
-  comprehensive:    { bg: 'rgba(34,197,94,0.12)',  text: '#4ade80' },
-  theft:            { bg: 'rgba(239,68,68,0.12)',  text: '#fca5a5' },
-  liability:        { bg: 'rgba(168,85,247,0.12)', text: '#c084fc' },
-  medical_payments: { bg: 'rgba(234,179,8,0.12)',  text: '#facc15' },
-}
+const _FALLBACK_TYPE_COLORS = { bg: 'rgba(100,116,139,0.12)', text: '#94a3b8' }
 
 export default function CaseQueue({ onSelectCase }) {
   const [cases, setCases] = useState([])
@@ -29,6 +15,18 @@ export default function CaseQueue({ onSelectCase }) {
   const [dateTab, setDateTab] = useState('all')
   const [typeTab, setTypeTab] = useState(null)
   const [filterPriority, setFilterPriority] = useState(null)
+  const [domainConfig, setDomainConfig] = useState(null)
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then(r => r.json())
+      .then(cfg => { if (!cfg.error) setDomainConfig(cfg) })
+      .catch(() => {})
+  }, [])
+
+  const TYPE_LABELS = domainConfig?.type_labels || {}
+  const TYPE_COLORS = domainConfig?.type_colors || {}
+  const subjectLabel = domainConfig?.entity_labels?.insured || 'Subject'
 
   const fetchCases = async () => {
     setLoading(true)
@@ -37,7 +35,7 @@ export default function CaseQueue({ onSelectCase }) {
       params.set('date_range', dateTab)
       if (typeTab) params.set('claim_type', typeTab)
       if (filterPriority) params.set('priority', filterPriority)
-      const res = await fetch(`http://${window.location.hostname}:8000/api/claims?${params}`)
+      const res = await fetch(`/api/claims?${params}`)
       const data = await res.json()
       setCases(data.claims || [])
       setCounts(data.counts || { total: 0, by_date: {}, by_type: {}, by_priority: {} })
@@ -58,12 +56,11 @@ export default function CaseQueue({ onSelectCase }) {
   ]
 
   const typeTabs = [
-    { id: null,               label: 'All Types' },
-    { id: 'collision',        label: 'Collision' },
-    { id: 'comprehensive',    label: 'Comprehensive' },
-    { id: 'theft',            label: 'Theft' },
-    { id: 'liability',        label: 'Liability' },
-    { id: 'medical_payments', label: 'Medical Pay' },
+    { id: null, label: 'All Types' },
+    ...(domainConfig?.claim_types || []).map(ct => ({
+      id: ct,
+      label: TYPE_LABELS[ct] || ct.replace(/_/g, ' '),
+    })),
   ]
 
   return (
@@ -149,7 +146,7 @@ export default function CaseQueue({ onSelectCase }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--c-surface)', borderBottom: '1px solid var(--c-border)' }}>
-                {['Claim #', 'Type', 'Member', 'Flags / Tasks', 'Risk', 'Status'].map(h => (
+                {['Claim #', 'Type', subjectLabel, 'Flags / Tasks', 'Risk', 'Status'].map(h => (
                   <th key={h} style={{
                     padding: '10px 16px', textAlign: 'left', fontSize: 10,
                     fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
@@ -162,7 +159,7 @@ export default function CaseQueue({ onSelectCase }) {
             <tbody>
               {cases.map(c => {
                 const colors = PRIORITY_COLORS[c.priority] || PRIORITY_COLORS.LOW
-                const typeColor = TYPE_COLORS[c.claim_type] || TYPE_COLORS.collision
+                const typeColor = TYPE_COLORS[c.claim_type] || _FALLBACK_TYPE_COLORS
                 const ruleCount = c.rules_triggered?.length || 0
                 const taskCount = c.workflow_tasks?.length || 0
                 return (

@@ -8,7 +8,7 @@ Minimal POC dataset. Mirrors the structure of generate_travel.py but for auto cl
   - RepairEstimate / PoliceReport        ← BookingRecord / FlightRecord
   - CarClaim                             ← TravelClaim
 
-Returns a dict keyed by entity name; this becomes DataContext.supplemental_data.
+Returns a dict keyed by entity name; this becomes DataContext.entities.
 """
 
 import random

@@ -104,9 +104,8 @@ def build_car_case_queue(
             },
             rules_triggered=rule_summaries,
             workflow_tasks=task_summaries,
-            employer_name=vehicle_desc,   # Repurpose field for vehicle display
-            member_id=claim.insured_id,
-            provider_name=shop_name,
+            asset_description=vehicle_desc,
+            counterparty_name=shop_name,
             claim_amount=claim.claim_amount,
             coverage_start=coverage_start,
             coverage_end=coverage_end,

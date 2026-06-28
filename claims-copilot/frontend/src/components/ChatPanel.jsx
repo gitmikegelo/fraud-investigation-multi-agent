@@ -494,7 +494,7 @@ function ChecklistCard({ msg, onStartAutoScan }) {
                     ))}
                     {step.details?.has_document_image && step.details?.image_url && (
                       <div
-                        onClick={(e) => { e.stopPropagation(); setDocImageUrl(`http://localhost:8000${step.details.image_url}`); }}
+                        onClick={(e) => { e.stopPropagation(); setDocImageUrl(`${window.location.protocol}//${window.location.host}${step.details.image_url}`); }}
                         style={{
                           marginTop: 8, padding: '6px 12px', display: 'inline-flex',
                           alignItems: 'center', gap: 6, cursor: 'pointer',

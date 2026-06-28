@@ -28,7 +28,7 @@ export default function DossierPanel({ caseId }) {
       setAiError(null)
       let claimData = null
       try {
-        const res = await fetch(`http://${window.location.hostname}:8000/api/claims/${caseId}`)
+        const res = await fetch(`/api/claims/${caseId}`)
         claimData = await res.json()
         setClaim(claimData)
         // If a previously generated AI dossier is cached on the claim, show it
@@ -40,7 +40,7 @@ export default function DossierPanel({ caseId }) {
       setAiGenerating(true)
       try {
         const genRes = await fetch(
-          `http://${window.location.hostname}:8000/api/claims/${caseId}/generate_dossier`,
+          `/api/claims/${caseId}/generate_dossier`,
           { method: 'POST' }
         )
         const genData = await genRes.json()
@@ -61,7 +61,7 @@ export default function DossierPanel({ caseId }) {
     setAiError(null)
     try {
       const res = await fetch(
-        `http://${window.location.hostname}:8000/api/claims/${caseId}/generate_dossier`,
+        `/api/claims/${caseId}/generate_dossier`,
         { method: 'POST' }
       )
       const data = await res.json()
@@ -251,20 +251,19 @@ function buildDossierMarkdown(claim, rules, docs, steps) {
     ? steps.map(s => `| ${s.step} | ${s.name} | ${(s.status || 'not_run').replace(/_/g, ' ')} | ${s.detail || '—'} |`).join('\n')
     : '| — | No checklist data | — | — |'
 
-  return `# Travel Insurance Claim Dossier
+  return `# Claim Dossier — ${claim.case_id}
 
 ## Claim Overview
 
 | Field | Value |
 |-------|-------|
 | **Claim ID** | ${claim.case_id} |
-| **Member** | ${claim.subject_name} |
-| **Member ID** | ${claim.member_id || '—'} |
-| **Employer** | ${claim.employer_name || '—'} |
+| **Subject** | ${claim.subject_name} |
 | **Claim Type** | ${(claim.claim_type || '—').replace(/_/g, ' ')} |
 | **Claim Amount** | $${(claim.claim_amount || 0).toLocaleString()} |
+| **Asset** | ${claim.asset_description || '—'} |
+| **Counterparty** | ${claim.counterparty_name || '—'} |
 | **Coverage Period** | ${claim.coverage_start || '—'} to ${claim.coverage_end || '—'} |
-| **Provider** | ${claim.provider_name || '—'} |
 | **Status** | ${claim.status || '—'} |
 | **Risk Score** | **${rs}** (${t}) |
 
@@ -292,6 +291,6 @@ ${(claim.workflow_tasks || []).length > 0
 
 ---
 
-*Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} · Zurich Travel Guard Claims Examiner Workflow*
+*Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} · Claims Examiner Workflow*
 `
 }

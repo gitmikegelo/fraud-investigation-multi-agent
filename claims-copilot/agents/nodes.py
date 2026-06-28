@@ -117,18 +117,42 @@ def _safe_agent_invoke(agent, messages: list, agent_name: str, fallback_message:
                 'messages': [AIMessage(content=fallback_message or f"[{agent_name}] Error during analysis: {str(e)[:200]}")]
             }
 
-try:
-    from .prompts_investigation_car import (
-        ORCHESTRATOR_PROMPT,
-        INVESTIGATION_PROMPT,
-        DOSSIER_PROMPT,
-    )
-    from .tools_investigation_car import INVESTIGATION_TOOLS
-    from .tools_dossier_car import DOSSIER_TOOLS, clear_tool_cache
-except ImportError:
-    ORCHESTRATOR_PROMPT = INVESTIGATION_PROMPT = DOSSIER_PROMPT = ""
-    INVESTIGATION_TOOLS = DOSSIER_TOOLS = []
-    def clear_tool_cache(): pass
+from core.registry import get_active_plugin as _get_plugin
+
+
+def _active_plugin():
+    """Deferred registry lookup — safe to call after all domains are registered."""
+    import domains  # noqa: F401
+    return _get_plugin()
+
+
+def _get_investigation_tools():
+    return _active_plugin().investigation_tools
+
+
+def _get_dossier_tools():
+    return _active_plugin().dossier_tools
+
+
+def _get_orchestrator_prompt():
+    return _active_plugin().investigation_prompts.get("ORCHESTRATOR", "")
+
+
+def _get_investigation_prompt():
+    return _active_plugin().investigation_prompts.get("INVESTIGATION", "")
+
+
+def _get_dossier_prompt():
+    return _active_plugin().investigation_prompts.get("DOSSIER", "")
+
+
+def clear_tool_cache():
+    import importlib
+    tools = _get_dossier_tools()
+    if tools:
+        mod = importlib.import_module(tools[0].__module__)
+        if hasattr(mod, 'clear_tool_cache'):
+            mod.clear_tool_cache()
 # Note: ORCHESTRATOR_PROMPT uses .format() with current_phase, loop_count, findings_summary
 
 
@@ -253,7 +277,7 @@ def orchestrator_node(state: InvestigationState) -> InvestigationState:
         findings_summary = f"## Previous Investigation Findings:\n{findings.get('last_investigation', '')}"
     
     # Build prompt with current state
-    system_prompt = ORCHESTRATOR_PROMPT.format(
+    system_prompt = _get_orchestrator_prompt().format(
         current_phase=current_phase,
         loop_count=state.get('loop_count', 0),
         findings_summary=findings_summary
@@ -351,8 +375,8 @@ def get_investigation_agent():
         llm = get_bedrock_llm(temperature=0.1, max_tokens=4096, agent_name='Investigation')
         investigation_agent = create_react_agent(
             llm,
-            INVESTIGATION_TOOLS,
-            prompt=INVESTIGATION_PROMPT
+            _get_investigation_tools(),
+            prompt=_get_investigation_prompt()
         )
     return investigation_agent
 
@@ -471,8 +495,8 @@ def get_dossier_agent():
         llm = get_bedrock_llm(temperature=0.1, max_tokens=4096, agent_name='Dossier')
         dossier_agent = create_react_agent(
             llm,
-            DOSSIER_TOOLS,
-            prompt=DOSSIER_PROMPT
+            _get_dossier_tools(),
+            prompt=_get_dossier_prompt()
         )
     return dossier_agent
 

@@ -154,7 +154,7 @@ export function useInvestigation(claimId, checklistContext) {
     setEvents([{ type: 'status', timestamp: startTime, message: 'Connecting to investigation service...' }])
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const wsUrl = `${protocol}://${window.location.hostname}:8000/ws/investigate/${claimId}`
+    const wsUrl = `${protocol}://${window.location.host}/ws/investigate/${claimId}`
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws

@@ -13,7 +13,7 @@ export default function RiskDashboard({ onSelectClaim }) {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch(`http://${window.location.hostname}:8000/api/claims/stats`)
+        const res = await fetch('/api/claims/stats')
         const data = await res.json()
         setStats(data)
       } catch {

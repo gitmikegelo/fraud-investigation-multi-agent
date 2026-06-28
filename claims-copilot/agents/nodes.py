@@ -118,8 +118,15 @@ def _safe_agent_invoke(agent, messages: list, agent_name: str, fallback_message:
             }
 
 try:
-    import os as _os
-    _DOMAIN_MODE = _os.getenv("DOMAIN_MODE", "travel")
+    # Source DOMAIN_MODE from main.py (the single source of truth) rather than the
+    # raw env var, so the investigation/dossier agents can never load a different
+    # domain's tools+prompts than the data context that api.py initialised. Falling
+    # back to the env var only if main can't be imported.
+    try:
+        from main import DOMAIN_MODE as _DOMAIN_MODE
+    except ImportError:
+        import os as _os
+        _DOMAIN_MODE = _os.getenv("DOMAIN_MODE", "travel")
     if _DOMAIN_MODE == "travel":
         from .prompts_investigation_travel import (
             ORCHESTRATOR_PROMPT,
@@ -520,7 +527,8 @@ def dossier_node(state: InvestigationState) -> InvestigationState:
             break
 
     dossier_input = f"Assess the following investigation findings and compile a dossier:\n\n{findings_summary}"
-    if original_claim_context and "Investigation could not complete" in findings_summary:
+    _sparse_signals = ("Investigation could not complete", "DataContext not initialised", "initialization error", "not initialized")
+    if original_claim_context and any(s in findings_summary for s in _sparse_signals):
         dossier_input += (
             f"\n\n## Original Claim Context (use this to compile the dossier if investigation data is sparse):\n"
             f"{original_claim_context}"
@@ -557,7 +565,7 @@ def dossier_node(state: InvestigationState) -> InvestigationState:
         if isinstance(msg, ToolMessage):
             # Check if this is from compile_dossier by looking at the content
             content = _extract_text(msg.content) if msg.content else ''
-            if any(kw in content[:150] for kw in ['INVESTIGATION DOSSIER', 'SUPPLEMENTAL HEALTH', 'FRAUD DOSSIER', 'DEPENDENT FRAUD', 'PROVIDER MILL']):
+            if any(kw in content[:150] for kw in ['INVESTIGATION DOSSIER', 'SUPPLEMENTAL HEALTH', 'FRAUD DOSSIER', 'DEPENDENT FRAUD', 'PROVIDER MILL', 'TRAVEL', 'ZURICH', 'BAGGAGE', 'EXECUTIVE SUMMARY']):
                 dossier_content = content
                 _log('Dossier', f'Found compile_dossier output: {len(dossier_content)} chars')
                 break
@@ -586,9 +594,16 @@ def dossier_node(state: InvestigationState) -> InvestigationState:
                 pass
 
     if dossier_content:
-        # Check if evidence was assessed as sufficient
+        # Check if evidence was assessed as sufficient.
+        # Strip leading agent wrapper labels before checking keywords so that
+        # "[Dossier Agent: INSUFFICIENT EVIDENCE]" doesn't poison a real dossier.
+        check_content = dossier_content
+        for strip_prefix in ('[Dossier Agent: INSUFFICIENT EVIDENCE]', '[Dossier Agent:'):
+            if check_content.startswith(strip_prefix):
+                check_content = check_content[check_content.find('\n')+1:].lstrip()
+                break
+        content_upper = check_content.upper()
         # IMPORTANT: check for INSUFFICIENT first — "SUFFICIENT" is a substring of "INSUFFICIENT"
-        content_upper = dossier_content.upper()
         if 'INSUFFICIENT' in content_upper or 'NOT SUFFICIENT' in content_upper or 'INCOMPLETE' in content_upper:
             evidence_sufficient = False
             _log('Dossier', 'Evidence assessed as INSUFFICIENT - looping back to investigation')

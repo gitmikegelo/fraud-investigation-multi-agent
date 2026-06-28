@@ -939,14 +939,20 @@ def _unpatch_loggers():
 
     if _original_node_log:
         nodes_mod._log = _original_node_log
+    if DOMAIN_MODE == "travel":
+        _inv_name, _dos_name = "agents.tools_investigation_travel", "agents.tools_dossier_travel"
+    else:
+        _inv_name, _dos_name = "agents.tools_investigation", "agents.tools_dossier"
     try:
-        import agents.tools_investigation as tinv
+        import importlib
+        tinv = importlib.import_module(_inv_name)
         if _original_tool_log_inv:
             tinv._tool_log = _original_tool_log_inv
     except ImportError:
         pass
     try:
-        import agents.tools_dossier as tdos
+        import importlib
+        tdos = importlib.import_module(_dos_name)
         if _original_tool_log_dos:
             tdos._tool_log = _original_tool_log_dos
     except ImportError:

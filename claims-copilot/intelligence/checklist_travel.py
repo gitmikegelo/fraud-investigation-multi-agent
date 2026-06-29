@@ -145,21 +145,34 @@ def _step_trip_documentation(claim, context) -> ChecklistStepResult:
         failed = [d for d in doc_results if not d.passed]
         critical = [d for d in failed if d.severity == "CRITICAL"]
         warnings = [d for d in failed if d.severity == "WARNING"]
-        assessment = next(
-            (d.details.get("overall_assessment") for d in doc_results
-             if isinstance(getattr(d, "details", None), dict) and d.details.get("overall_assessment")),
-            "",
-        )
-        if not failed:
-            findings.append(f"Evidence image passed all {len(doc_results)} authenticity checks")
+        # Collect per-image assessments (primary first, then extra sentinels)
+        seen_assessments = {}
+        for d in doc_results:
+            if not isinstance(getattr(d, "details", None), dict):
+                continue
+            img = d.details.get("source_image", "")
+            asmt = d.details.get("overall_assessment", "")
+            if asmt and img and img not in seen_assessments:
+                seen_assessments[img] = asmt
+
+        real_failures = [d for d in failed if d.check_id != "DOC-SUMMARY"]
+        real_critical = [d for d in real_failures if d.severity == "CRITICAL"]
+        real_warnings = [d for d in real_failures if d.severity == "WARNING"]
+
+        if not real_failures:
+            findings.append(f"Evidence image passed all authenticity checks")
         else:
-            for c in critical:
-                findings.append(f"CRITICAL [{c.check_id}] {c.check_name}: {c.explanation}")
-            for w in warnings:
-                findings.append(f"WARNING [{w.check_id}] {w.check_name}: {w.explanation}")
+            for c in real_critical:
+                src = c.details.get("source_image", "")
+                label = f" [{src}]" if src else ""
+                findings.append(f"CRITICAL [{c.check_id}]{label} {c.check_name}: {c.explanation}")
+            for w in real_warnings:
+                src = w.details.get("source_image", "")
+                label = f" [{src}]" if src else ""
+                findings.append(f"WARNING [{w.check_id}]{label} {w.check_name}: {w.explanation}")
             all_ok = False
-        if assessment:
-            findings.append(f"Vision assessment: {assessment}")
+        for img_name, asmt in seen_assessments.items():
+            findings.append(f"Vision assessment ({img_name}): {asmt}")
 
     # Check for document request tasks
     tasks = _get_claim_tasks(context, claim.claim_id)
@@ -239,9 +252,13 @@ def _step_fraud_screening(claim, context) -> ChecklistStepResult:
     has_images = context.get("has_claim_images", False)
     image_details = {}
     if is_vision or has_images:
+        from .document_vision import find_claim_images as _find_imgs
+        all_images = _find_imgs(claim.claim_id)
         image_details = {
             "has_document_image": True,
             "image_url": f"/api/claims/{claim.claim_id}/document-image",
+            "image_urls": [f"/api/claims/{claim.claim_id}/document-image/{i}" for i in range(len(all_images))],
+            "image_names": [p.name for p in all_images],
         }
 
     traveler = _get_traveler(context, getattr(claim, 'traveler_id', ''))

@@ -1,0 +1,130 @@
+Orchestrator
+--- Iteration 1 | Current phase: start ---
+Orchestrator
+Calling LLM for routing decision...
+Orchestrator
+LLM responded in 1.2s
+Orchestrator
+Phase transition: start -> investigate
+Investigation
+Starting investigation sub-agent (7 tools available)...
+Investigation
+Invoking LLM + tool loop...
+tool
+tool:scan_suspicious_entities -> Scanning case queue (risk > 40)...
+tool
+tool:scan_suspicious_entities -> Found 7 high-risk entities; top: BL-303 (99.0), BL-040 (93.6) (0.3s)
+tool
+tool:profile_entity -> Profiling TRV-0003 (Donna Walker)...
+tool
+tool:profile_entity -> Traveler, 6 claims, current claim BL-303 $15.2K baggage_loss, loyalty=standard
+tool
+tool:get_claim_details -> Fetching claim BL-303...
+tool
+tool:get_claim_details -> baggage_loss $15,200; 7 luxury items, no receipts; rules R-004, R-007, R-011
+tool
+tool:compare_to_peers -> Comparing TRV-0003 baggage_value vs traveler peers...
+tool
+tool:compare_to_peers -> Value: $15,200, peer_avg: $2,312, z-score: 5.09
+Investigation
+Sub-agent finished in 8.2s | Tool calls made: 4
+Investigation
+Summary: BL-303 is an extreme baggage_loss outlier (6.6x peer avg) by serial claimer TRV-0003...
+Orchestrator
+--- Iteration 2 | Current phase: investigate ---
+Orchestrator
+Phase transition: investigate -> compile
+Dossier
+Starting dossier sub-agent (5 tools available)...
+Dossier
+Invoking LLM + tool loop (evidence assessment)...
+tool
+tool:assess_evidence -> Assessing 'baggage_padding' (3 evidence points)...
+tool
+tool:assess_evidence -> INSUFFICIENT (2 passed, 2 failed)
+tool
+tool:assess_evidence -> Missing: document_evidence, regulatory_citation
+Dossier
+Evidence assessed as INSUFFICIENT - looping back to investigation
+Orchestrator
+--- Iteration 3 | Current phase: investigate ---
+Orchestrator
+Evidence INSUFFICIENT - looping back to investigation
+Orchestrator
+Phase transition: investigate -> investigate
+Investigation
+Starting investigation sub-agent (addressing evidence gaps)...
+Investigation
+Evidence gaps: need photo/document forensics on the luggage image
+tool
+tool:get_claim_details -> Reviewing BL-303 evidence-image vision checks...
+tool
+tool:get_claim_details -> DOC-002 CRITICAL: jagged hole appears deliberately created, inconsistent with transport damage
+tool
+tool:get_claim_details -> DOC-005 WARNING: baggage tag illegible — claimant identity unconfirmed (routing LHR→JFK)
+tool
+tool:find_ring -> Checking for related baggage/value-padding patterns (risk >= 50)...
+tool
+tool:find_ring -> No coordinated ring; isolated high-value claimant TRV-0003
+tool
+tool:compare_to_peers -> Comparing TRV-0003 claim_count vs travelers...
+tool
+tool:compare_to_peers -> Value: 6, peer_avg: 1.4, z-score: 3.1 (serial claimer)
+Investigation
+Sub-agent finished in 6.8s | Tool calls made: 3
+Orchestrator
+--- Iteration 4 | Current phase: investigate ---
+Orchestrator
+Phase transition: investigate -> compile
+Dossier
+Starting dossier sub-agent...
+tool
+tool:assess_evidence -> Assessing 'baggage_padding' (6 evidence points)...
+tool
+tool:assess_evidence -> INSUFFICIENT (4 passed, 1 failed)
+tool
+tool:assess_evidence -> Missing: regulatory_citation — need TG rule references
+Dossier
+Evidence INSUFFICIENT — missing regulatory citations
+Orchestrator
+--- Iteration 5 | Current phase: investigate ---
+Orchestrator
+Phase transition: investigate -> investigate
+Investigation
+Gathering regulatory basis for baggage value-padding...
+tool
+tool:get_claim_details -> Confirming BL-303 rule triggers and coverage limit...
+tool
+tool:get_claim_details -> R-004 (outlier), R-007 (serial), R-011 (photo review BLOCK); limit $2,500 exceeded by $12,700
+Investigation
+Sub-agent finished in 2.5s | Tool calls made: 1
+Orchestrator
+--- Iteration 6 | Current phase: investigate ---
+Orchestrator
+Phase transition: investigate -> compile
+Dossier
+Starting dossier sub-agent...
+tool
+tool:assess_evidence -> Assessing 'baggage_padding' (8 evidence points)...
+tool
+tool:assess_evidence -> SUFFICIENT (5 passed, 0 failed)
+tool
+tool:search_regulatory_rules -> Searching rules for baggage_loss...
+tool
+tool:search_regulatory_rules -> Found 3 applicable rules: TG-004, TG-007, TG-009
+tool
+tool:find_similar_cases -> Looking up precedents for baggage_padding...
+tool
+tool:find_similar_cases -> Found 2 precedent cases
+tool
+tool:estimate_recovery -> Baggage padding: $15.2K claimed, $2.5K limit...
+tool
+tool:estimate_recovery -> Over-limit exposure $12,700; net prevention $12,700
+tool
+tool:compile_dossier -> Generating travel-insurance fraud dossier...
+tool
+tool:compile_dossier -> Dossier generated (3,180 chars)
+Dossier
+Evidence assessed as SUFFICIENT
+Orchestrator
+Phase transition: compile -> done

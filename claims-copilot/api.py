@@ -404,11 +404,19 @@ async def get_claim_documents(claim_id: str):
 
 @app.get("/api/claims/{claim_id}/document-image")
 async def get_claim_document_image(claim_id: str):
-    """Serve the document image file for a claim."""
+    """Serve the primary (index 0) document image for a claim."""
+    return await get_claim_document_image_by_index(claim_id, 0)
+
+
+@app.get("/api/claims/{claim_id}/document-image/{index}")
+async def get_claim_document_image_by_index(claim_id: str, index: int):
+    """Serve a specific document image by index (0-based)."""
     images = find_claim_images(claim_id)
     if not images:
         return {"error": f"No document image found for {claim_id}"}
-    image_path = images[0]
+    if index >= len(images):
+        return {"error": f"Image index {index} out of range ({len(images)} images found)"}
+    image_path = images[index]
     media_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
     media_type = media_types.get(image_path.suffix.lower(), "image/png")
     return FileResponse(str(image_path), media_type=media_type)

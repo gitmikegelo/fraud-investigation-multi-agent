@@ -839,7 +839,7 @@ def _inject_fraud_scenarios(
             if b.policy_id == hero_policy:
                 b.confirmed = False
 
-    # ── BL-303: Luxury Baggage Padding — $15K claim for designer items in lost bag
+    # ── BL-303: Luxury Baggage Padding — $15K claim for designer items in damaged bag
     bl_claims = [c for c in claims if c.claim_type == "baggage_loss" and c.fraud_scenario is None]
     if bl_claims:
         hero = bl_claims[0]
@@ -855,7 +855,7 @@ def _inject_fraud_scenarios(
             "Cashmere sweater (Brunello Cucinelli)",
             "Gold jewelry set",
         ]
-        hero.notes = "Baggage claim 6x average value. All luxury items, no purchase receipts provided. Claim exceeds policy coverage limit. Damaged-luggage photo submitted as evidence."
+        hero.notes = "Baggage claim 6x average value. All luxury items, no purchase receipts provided. Claim exceeds policy coverage limit. Damaged-luggage photo submitted as evidence — damage appears staged."
         hero.photo_evidence = True  # luggage photo on file (images/bl303.png) → triggers R-011 forensic review
         hero.traveler_id = travelers[2].traveler_id
         travelers[2].notes = "FRAUD_SCENARIO: Luxury baggage padding"

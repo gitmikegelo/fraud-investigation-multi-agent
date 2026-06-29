@@ -66,3 +66,4 @@ class Case:
     coverage_end: Optional[str] = None
     investigation_history: List[Dict] = field(default_factory=list)
     dossier: Optional[str] = None
+    complexity: str = "Standard"  # "Standard" or "Complex"

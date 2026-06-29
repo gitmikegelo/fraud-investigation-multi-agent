@@ -11,6 +11,11 @@ const TYPE_LABELS = {
   accident:            'Accident',
   hospital_indemnity:  'Hospital Ind.',
   critical_illness:    'Critical Illness',
+  trip_cancellation:   'Trip Cancel',
+  trip_interruption:   'Trip Interrupt',
+  medical_emergency:   'Medical',
+  baggage_loss:        'Baggage',
+  travel_delay:        'Travel Delay',
 }
 
 const TYPE_COLORS = {
@@ -18,6 +23,11 @@ const TYPE_COLORS = {
   accident:           { bg: 'rgba(59,130,246,0.12)', text: '#60a5fa' },
   hospital_indemnity: { bg: 'rgba(168,85,247,0.12)', text: '#c084fc' },
   critical_illness:   { bg: 'rgba(239,68,68,0.12)',  text: '#fca5a5' },
+  trip_cancellation:  { bg: 'rgba(59,130,246,0.12)', text: '#60a5fa' },
+  trip_interruption:  { bg: 'rgba(59,130,246,0.12)', text: '#93c5fd' },
+  medical_emergency:  { bg: 'rgba(239,68,68,0.12)',  text: '#fca5a5' },
+  baggage_loss:       { bg: 'rgba(245,158,11,0.12)', text: '#fcd34d' },
+  travel_delay:       { bg: 'rgba(107,114,128,0.12)',text: '#9ca3af' },
 }
 
 export default function CaseQueue({ onSelectCase }) {
@@ -189,8 +199,17 @@ export default function CaseQueue({ onSelectCase }) {
                     </td>
                     <td style={{ padding: '11px 16px', color: 'var(--c-text-dim)', fontSize: 12 }}>
                       {ruleCount > 0 && <span style={{ marginRight: 8 }}>🚩 {ruleCount}</span>}
-                      {taskCount > 0 && <span>📋 {taskCount}</span>}
-                      {ruleCount === 0 && taskCount === 0 && <span style={{ color: 'var(--c-text-muted)' }}>—</span>}
+                      {taskCount > 0 && <span style={{ marginRight: 8 }}>📋 {taskCount}</span>}
+                      {ruleCount === 0 && taskCount === 0 && <span style={{ color: 'var(--c-text-muted)', marginRight: 8 }}>—</span>}
+                      {c.key_metrics?.complexity === 'Complex' && (
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8,
+                          background: 'rgba(234,179,8,0.15)', color: '#fbbf24',
+                          textTransform: 'uppercase', letterSpacing: '0.05em',
+                        }}>
+                          Complex
+                        </span>
+                      )}
                     </td>
                     <td style={{ padding: '11px 16px' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>

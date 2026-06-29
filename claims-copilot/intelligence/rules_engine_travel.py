@@ -1,4 +1,4 @@
-"""10 deterministic rules (R-001 to R-010) for Zurich Travel Guard claims."""
+"""13 deterministic rules (R-001 to R-013) for Zurich Travel Guard claims."""
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
@@ -249,6 +249,54 @@ def r010_unverified_provider(claim, context) -> RuleResult:
     )
 
 
+_COMPLEXITY_THRESHOLDS = {
+    "medical_emergency": 5_000,
+    "trip_cancellation": 25_000,
+    "trip_interruption": 25_000,
+    "baggage_loss":       5_000,
+    "travel_delay":       1_000,
+}
+
+
+def r012_claim_amount_threshold(claim, context) -> RuleResult:
+    """R-012: Claim amount exceeds section-specific threshold -> COMPLEX"""
+    threshold = _COMPLEXITY_THRESHOLDS.get(claim.claim_type)
+    if threshold is None:
+        return RuleResult("R-012", "Claimed amount is over threshold", "COMPLEX", False, "No threshold defined for this claim type")
+    triggered = claim.claim_amount > threshold
+    return RuleResult(
+        rule_id="R-012",
+        rule_name="Claimed amount is over threshold",
+        severity="COMPLEX",
+        triggered=triggered,
+        explanation=f"Claimed ${claim.claim_amount:,.2f} exceeds complexity threshold ${threshold:,}" if triggered else f"Claimed ${claim.claim_amount:,.2f} is within threshold ${threshold:,}",
+        details={"claim_amount": claim.claim_amount, "threshold": threshold, "claim_type": claim.claim_type},
+    )
+
+
+_MEDEVAC_SUBTYPES = {
+    "emergency_medical_evacuation", "medical_evacuation", "evacuation_and_repatriation",
+    "repatriation_of_remains", "security_evacuation", "political_evacuation",
+    "natural_disaster_evacuation", "emergency_reunification", "return_of_minor_children",
+}
+
+
+def r013_medical_evacuation(claim, context) -> RuleResult:
+    """R-013: Claim involves medical evacuation -> COMPLEX"""
+    is_medevac = bool(getattr(claim, "is_medical_evacuation", False))
+    if not is_medevac:
+        subtype = str(getattr(claim, "claim_subtype", "") or "").lower().replace(" ", "_")
+        is_medevac = subtype in _MEDEVAC_SUBTYPES or "evacuation" in subtype
+    return RuleResult(
+        rule_id="R-013",
+        rule_name="Claim is a Medical Evacuation",
+        severity="COMPLEX",
+        triggered=is_medevac,
+        explanation="Claim involves medical evacuation — automatically complex" if is_medevac else "Not a medical evacuation claim",
+        details={"is_medical_evacuation": is_medevac},
+    )
+
+
 # ── Rules Engine Runner ──────────────────────────────────────────────────────
 
 ALL_TRAVEL_RULES = [
@@ -263,11 +311,13 @@ ALL_TRAVEL_RULES = [
     r009_flight_on_time,
     r010_unverified_provider,
     r011_baggage_photo_evidence_review,
+    r012_claim_amount_threshold,
+    r013_medical_evacuation,
 ]
 
 
 def run_travel_rules_engine(claim, context: Dict) -> List[RuleResult]:
-    """Run all 10 travel rules against a single claim."""
+    """Run all 13 travel rules against a single claim."""
     results = []
     for rule_fn in ALL_TRAVEL_RULES:
         try:

@@ -488,20 +488,33 @@ function ChecklistCard({ msg, onStartAutoScan }) {
                         {f}
                       </div>
                     ))}
-                    {step.details?.has_document_image && step.details?.image_url && (
-                      <div
-                        onClick={(e) => { e.stopPropagation(); setDocImageUrl(`http://localhost:8000${step.details.image_url}`); }}
-                        style={{
-                          marginTop: 8, padding: '6px 12px', display: 'inline-flex',
-                          alignItems: 'center', gap: 6, cursor: 'pointer',
-                          background: 'var(--c-blue-soft)', border: '1px solid rgba(41,98,255,0.2)',
-                          borderRadius: 8, fontSize: 11, fontWeight: 600,
-                          color: 'var(--c-blue)', transition: 'all 0.15s',
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(41,98,255,0.15)' }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'var(--c-blue-soft)' }}
-                      >
-                        🔍 View Source Document
+                    {step.details?.has_document_image && (
+                      <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {(step.details.image_urls?.length > 0
+                          ? step.details.image_urls.map((url, idx) => ({
+                              url,
+                              label: step.details.image_names?.[idx] || `Document ${idx + 1}`,
+                            }))
+                          : step.details.image_url
+                            ? [{ url: step.details.image_url, label: 'Document' }]
+                            : []
+                        ).map(({ url, label }, idx) => (
+                          <div
+                            key={idx}
+                            onClick={(e) => { e.stopPropagation(); setDocImageUrl(`http://localhost:8000${url}`); }}
+                            style={{
+                              padding: '6px 12px', display: 'inline-flex',
+                              alignItems: 'center', gap: 6, cursor: 'pointer',
+                              background: 'var(--c-blue-soft)', border: '1px solid rgba(41,98,255,0.2)',
+                              borderRadius: 8, fontSize: 11, fontWeight: 600,
+                              color: 'var(--c-blue)', transition: 'all 0.15s',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(41,98,255,0.15)' }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'var(--c-blue-soft)' }}
+                          >
+                            🔍 {label}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>

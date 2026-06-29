@@ -161,9 +161,13 @@ def _step_fraud_screening(claim, context) -> ChecklistStepResult:
     has_images = context.get("has_claim_images", False)
     image_details = {}
     if is_vision or has_images:
+        from .document_vision import find_claim_images as _find_imgs
+        all_images = _find_imgs(claim.claim_id)
         image_details = {
             "has_document_image": True,
             "image_url": f"/api/claims/{claim.claim_id}/document-image",
+            "image_urls": [f"/api/claims/{claim.claim_id}/document-image/{i}" for i in range(len(all_images))],
+            "image_names": [p.name for p in all_images],
         }
 
     has_banner = member.suspicious_banner if member else False
@@ -263,8 +267,12 @@ def _step_medical_docs(claim, context) -> ChecklistStepResult:
     # Also show image button if image file exists, even if vision analysis failed
     has_images = context.get("has_claim_images", False)
     if is_vision or has_images:
+        from .document_vision import find_claim_images as _find_imgs
+        all_images = _find_imgs(claim.claim_id)
         details["has_document_image"] = True
         details["image_url"] = f"/api/claims/{claim.claim_id}/document-image"
+        details["image_urls"] = [f"/api/claims/{claim.claim_id}/document-image/{i}" for i in range(len(all_images))]
+        details["image_names"] = [p.name for p in all_images]
 
     failed_docs = [d for d in doc_results if not d.passed]
     critical_docs = [d for d in failed_docs if d.severity == "CRITICAL"]

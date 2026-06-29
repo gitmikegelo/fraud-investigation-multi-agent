@@ -44,6 +44,8 @@ def build_travel_case_queue(
         triggered = [r for r in rules if r.triggered]
         block_rules = [r for r in triggered if r.severity == "BLOCK"]
         flag_rules = [r for r in triggered if r.severity == "FLAG"]
+        complex_rules = [r for r in triggered if r.severity == "COMPLEX"]
+        is_complex = len(complex_rules) > 0
 
         if block_rules:
             flag_reason = f"BLOCK: {block_rules[0].rule_name} — {block_rules[0].explanation[:80]}"
@@ -110,6 +112,7 @@ def build_travel_case_queue(
                 "flag_rules": len(flag_rules),
                 "destination": dest_name,
                 "claim_type": claim.claim_type,
+                "complexity": "Complex" if is_complex else "Standard",
             },
             rules_triggered=rule_summaries,
             workflow_tasks=task_summaries,
@@ -119,6 +122,7 @@ def build_travel_case_queue(
             claim_amount=claim.claim_amount,
             coverage_start=coverage_start,
             coverage_end=coverage_end,
+            complexity="Complex" if is_complex else "Standard",
         ))
 
     # Sort: HIGH first, then risk_score descending

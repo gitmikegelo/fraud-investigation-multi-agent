@@ -336,21 +336,48 @@ def run_vision_document_checks(
             len(results), claim_id,
         )
 
+    # Tag every primary result with its source image name
+    for r in results:
+        r.details["source_image"] = primary_image.name
+
     # If multiple images exist, analyze additional ones and merge notable findings
     if len(images) > 1:
         for extra_image in images[1:]:
             extra_response = analyze_document_image(extra_image, client)
             if "error" not in extra_response:
                 extra_results = _parse_vision_results(extra_response)
-                # Merge: if additional image flags something the primary didn't, add it
+                extra_assessment = extra_response.get("overall_assessment", "")
+                extra_confidence = extra_response.get("confidence", 0.0)
+
+                # Tag all extra results with their source image
+                for r in extra_results:
+                    r.details["source_image"] = extra_image.name
+
+                # Merge: if additional image flags something the primary passed, override it
                 primary_ids = {r.check_id for r in results}
                 failed_extras = [r for r in extra_results if not r.passed and r.check_id in primary_ids]
                 for er in failed_extras:
-                    # Override the primary result if this image flagged it
                     for i, pr in enumerate(results):
                         if pr.check_id == er.check_id and pr.passed:
-                            er.details["source_image"] = extra_image.name
                             results[i] = er
                             break
+
+                # Append a sentinel result carrying this image's overall assessment
+                # so the checklist can surface it alongside the primary assessment
+                if extra_assessment:
+                    results.append(DocCheckResult(
+                        check_id="DOC-SUMMARY",
+                        check_name=f"Vision Assessment ({extra_image.name})",
+                        passed=True,
+                        explanation=extra_assessment,
+                        severity="INFO",
+                        details={
+                            "source": "vision_ai",
+                            "source_image": extra_image.name,
+                            "overall_assessment": extra_assessment,
+                            "confidence": extra_confidence,
+                            "is_extra_assessment": True,
+                        },
+                    ))
 
     return results

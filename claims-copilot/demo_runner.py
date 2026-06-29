@@ -25,7 +25,7 @@ from datetime import datetime
 
 DEMO_FINAL_DOSSIER = r"""# TRAVEL INSURANCE FRAUD INVESTIGATION DOSSIER
 
-**Hypothesis**: Baggage value-padding with staged damage — luxury-item baggage_loss claim 6.6x peer average, exceeding policy limit, supported by a manipulated luggage photo
+**Hypothesis**: Baggage value-padding with staged damage — luxury-item baggage_loss claim 6.6x peer average, exceeding policy limit, supported by a manipulated damaged-luggage photo
 **Case Type**: Baggage Padding / Value Inflation
 **Generated**: {date}
 **Status**: Evidence Sufficient - Ready for Action
@@ -48,7 +48,7 @@ Investigation identified suspected **baggage value-padding** on claim **BL-303**
 - **Loyalty Tier**: standard
 
 ### Entity 2: BL-303 (Claim)
-- **Type**: Baggage Loss Claim
+- **Type**: Baggage Damage Claim
 - **Amount**: $15,200.00 (6.6x peer average of $2,312.40)
 - **Policy Limit**: $2,500.00 — exceeded by $12,700.00 (508%)
 - **Items**: Rolex Submariner, Louis Vuitton carry-on, MacBook Pro 16", Bose headphones, Prada sunglasses, cashmere sweater, gold jewelry — no purchase receipts

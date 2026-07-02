@@ -112,6 +112,8 @@ def _step_damage_documentation(claim, context) -> ChecklistStepResult:
     findings = []
     all_ok = True
 
+    details: Dict = {}
+
     estimate = _get_estimate(context, claim)
     if claim.claim_type in ("collision", "comprehensive", "liability"):
         if estimate:
@@ -122,27 +124,38 @@ def _step_damage_documentation(claim, context) -> ChecklistStepResult:
     elif claim.claim_type == "theft":
         findings.append("Total-loss / theft claim — no repair estimate expected")
 
-    # Evidence-image vision analysis (e.g. damage photo, repair estimate scan)
-    doc_results = _get_claim_doc_results(context, claim.claim_id)
-    if doc_results:
-        failed = [d for d in doc_results if not d.passed]
-        critical = [d for d in failed if d.severity == "CRITICAL"]
-        warnings = [d for d in failed if d.severity == "WARNING"]
-        assessment = next(
-            (d.details.get("overall_assessment") for d in doc_results
-             if isinstance(getattr(d, "details", None), dict) and d.details.get("overall_assessment")),
-            "",
-        )
-        if not failed:
-            findings.append(f"Evidence image passed all {len(doc_results)} authenticity checks")
-        else:
-            for c in critical:
-                findings.append(f"CRITICAL [{c.check_id}] {c.check_name}: {c.explanation}")
-            for w in warnings:
-                findings.append(f"WARNING [{w.check_id}] {w.check_name}: {w.explanation}")
+    # Damage-photo evaluation via the external DECREE service (short mode).
+    # Built once per checklist run in _build_car_checklist_ctx and passed via context.
+    decree = context.get("decree_short")
+    if decree:
+        summary = (decree.get("reportContent") or "").strip()
+        low = decree.get("costEstimateLow")
+        high = decree.get("costEstimateHigh")
+        mid = decree.get("costEstimateMidpoint")
+        confidence = decree.get("confidenceLevel")
+
+        if summary:
+            findings.append(f"DECREE assessment: {summary}")
+        if low is not None and high is not None:
+            cost_line = f"DECREE estimate: ${low:,}–${high:,}"
+            if mid is not None:
+                cost_line += f" (midpoint ${mid:,})"
+            if confidence is not None:
+                cost_line += f", confidence {confidence}%"
+            findings.append(cost_line)
+
+        # DECREE short mode has no explicit pass/fail; low confidence → needs_review.
+        if isinstance(confidence, (int, float)) and confidence < 50:
             all_ok = False
-        if assessment:
-            findings.append(f"Vision assessment: {assessment}")
+
+        details = {
+            "decree": True,
+            "decree_summary": summary,
+            "cost_low": low,
+            "cost_high": high,
+            "cost_mid": mid,
+            "confidence": confidence,
+        }
 
     # R-002: no repair estimate
     rules = _get_claim_rules(context, claim.claim_id)
@@ -151,7 +164,7 @@ def _step_damage_documentation(claim, context) -> ChecklistStepResult:
         findings.append(f"BLOCK R-002: {r002.explanation}")
         all_ok = False
 
-    return ChecklistStepResult(2, "Damage Documentation", "pass" if all_ok else "needs_review", all_ok, findings)
+    return ChecklistStepResult(2, "Damage Documentation", "pass" if all_ok else "needs_review", all_ok, findings, details)
 
 
 def _step_coverage_timeline(claim, context) -> ChecklistStepResult:
@@ -209,6 +222,28 @@ def _step_fraud_screening(claim, context) -> ChecklistStepResult:
             "image_url": f"/api/claims/{claim.claim_id}/document-image",
         }
 
+    # Fraud image analysis — vision authenticity checks (DOC-001…DOC-013) on the evidence image.
+    vision_ok = True
+    if doc_results:
+        failed = [d for d in doc_results if not d.passed]
+        critical = [d for d in failed if d.severity == "CRITICAL"]
+        warnings = [d for d in failed if d.severity == "WARNING"]
+        assessment = next(
+            (d.details.get("overall_assessment") for d in doc_results
+             if isinstance(getattr(d, "details", None), dict) and d.details.get("overall_assessment")),
+            "",
+        )
+        if not failed:
+            findings.append(f"Evidence image passed all {len(doc_results)} authenticity checks")
+        else:
+            for c in critical:
+                findings.append(f"CRITICAL [{c.check_id}] {c.check_name}: {c.explanation}")
+            for w in warnings:
+                findings.append(f"WARNING [{w.check_id}] {w.check_name}: {w.explanation}")
+            vision_ok = False
+        if assessment:
+            findings.append(f"Vision assessment: {assessment}")
+
     insured = _get_insured(context, getattr(claim, 'insured_id', ''))
     is_serial = getattr(insured, 'claim_history_count', 0) >= 3 if insured else False
     is_flagged = getattr(insured, 'flagged', False) if insured else False
@@ -230,7 +265,7 @@ def _step_fraud_screening(claim, context) -> ChecklistStepResult:
 
     findings.append(f"Risk score: {risk_score:.1f} ({risk.tier if risk else 'UNKNOWN'})")
 
-    if risk_score < 30 and not block_rules and not is_flagged:
+    if risk_score < 30 and not block_rules and not is_flagged and vision_ok:
         return ChecklistStepResult(4, "Document AI Review", "pass", True, findings,
                                    {"risk_score": risk_score, "auto_passed": True, **image_details})
 

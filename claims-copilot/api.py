@@ -24,6 +24,7 @@ except ImportError:
 from main import initialize_car_data, DataContext, DOMAIN_MODE
 from cases import CaseStatus
 from intelligence.document_vision import run_vision_document_checks, find_claim_images
+from intelligence.decree_client import run_decree_assessment
 
 from intelligence.checklist_car import run_full_checklist, run_checklist_step, CHECKLIST_STEPS
 
@@ -31,10 +32,13 @@ from intelligence.checklist_car import run_full_checklist, run_checklist_step, C
 def _build_car_checklist_ctx(claim_id: str) -> dict:
     """Build checklist context for car insurance mode.
 
-    Runs live vision analysis on the claim's evidence image (e.g. a vehicle-damage
-    photo or repair estimate) when one is present, falling back to cached doc results.
+    Runs the external DECREE damage evaluation (short mode) on the claim's evidence
+    image (e.g. a vehicle-damage photo) when one is present, plus live vision analysis
+    used by other steps. Both fail soft — a missing image or a failed request leaves
+    the corresponding context key empty and downstream steps degrade gracefully.
     """
     live_doc_results = dict(data_ctx.claim_doc_results)
+    decree_short = None
     images = find_claim_images(claim_id)
     has_images = len(images) > 0
     if images:
@@ -44,6 +48,10 @@ def _build_car_checklist_ctx(claim_id: str) -> dict:
                 live_doc_results[claim_id] = vision_results
         except Exception as e:
             print(f"  ⚠ Vision analysis failed for {claim_id}: {e} — using cached metadata")
+        try:
+            decree_short = run_decree_assessment(claim_id, mode="short")
+        except Exception as e:
+            print(f"  ⚠ DECREE short assessment failed for {claim_id}: {e}")
     return {
         "claims": data_ctx.supplemental_claims,
         "insureds": data_ctx.supplemental_data.get("insureds", []),
@@ -56,6 +64,7 @@ def _build_car_checklist_ctx(claim_id: str) -> dict:
         "claim_rules": data_ctx.claim_rules,
         "claim_risk_scores": data_ctx.claim_risk_scores,
         "claim_doc_results": live_doc_results,
+        "decree_short": decree_short,
         "has_claim_images": has_images,
     }
 
@@ -384,6 +393,35 @@ async def get_claim_checklist(claim_id: str):
     }
 
 
+@app.get("/api/claims/{claim_id}/decree/full")
+async def get_claim_decree_full(claim_id: str):
+    """Run the external DECREE damage evaluation in full mode for a claim.
+
+    Returns the detailed markdown report plus cost/confidence fields. Called
+    on-demand when the examiner opens the full evaluation panel.
+    """
+    if not data_ctx:
+        return {"error": "Data not loaded"}
+
+    if not find_claim_images(claim_id):
+        return {"error": "No damage photo on file for this claim."}
+
+    # Run off the event loop — DECREE calls Bedrock and can take several seconds.
+    data = await asyncio.to_thread(run_decree_assessment, claim_id, "full")
+    if not data:
+        return {"error": "DECREE evaluation is unavailable. Please try again."}
+
+    return {
+        "claim_id": claim_id,
+        "report_markdown": data.get("reportContent", ""),
+        "cost_low": data.get("costEstimateLow"),
+        "cost_high": data.get("costEstimateHigh"),
+        "cost_mid": data.get("costEstimateMidpoint"),
+        "confidence": data.get("confidenceLevel"),
+        "confidence_factors": data.get("confidenceFactors", {}),
+    }
+
+
 @app.get("/api/claims/{claim_id}/tasks")
 async def get_claim_tasks(claim_id: str):
     if not data_ctx:
@@ -619,6 +657,93 @@ Bullet list of the key evidence points — written in a format suitable for lega
             break
 
     return {"claim_id": claim_id, "dossier": dossier_text, "generated_at": datetime.now().isoformat()}
+
+
+@app.post("/api/claims/{claim_id}/generate_letter")
+async def generate_claimant_letter(claim_id: str):
+    """
+    Generate a short, plain-language letter addressed to the claimant/policyholder.
+
+    Unlike the internal SIU dossier, this is claimant-facing: it must NOT expose
+    risk scores, rule IDs, fraud terminology, or investigation internals. Claude
+    reads the same intelligence context but decides the appropriate tone/outcome
+    (review complete & in order, additional information needed, or under further
+    review) and keeps the letter minimal and reassuring.
+    """
+    if not data_ctx:
+        return {"error": "Data not loaded"}
+
+    case = data_ctx.get_case(claim_id)
+    if not case:
+        return {"error": f"Claim {claim_id} not found"}
+
+    claim = data_ctx.get_claim(claim_id)
+    subject_id = getattr(claim, 'insured_id', '') if claim else ''
+    insured = data_ctx.get_insured(subject_id) if subject_id else None
+    risk = data_ctx.claim_risk_scores.get(claim_id)
+    rules = data_ctx.claim_rules.get(claim_id, [])
+    doc_results = data_ctx.claim_doc_results.get(claim_id, [])
+    tasks = data_ctx.get_claim_tasks(claim_id)
+
+    triggered_rules = [r for r in rules if r.triggered]
+    failed_docs = [d for d in doc_results if not d.passed]
+    open_tasks = [t for t in tasks if getattr(t, 'status', '') in ("pending", "in_progress", "overdue")]
+
+    subject_name = getattr(insured, 'full_name', None) or case.subject_name
+    claim_type = (claim.claim_type if claim else case.claim_type.value).replace('_', ' ')
+    incident_date = getattr(claim, 'date_of_incident', 'N/A') if claim else 'N/A'
+    today = datetime.now().strftime('%B %d, %Y')
+
+    # Internal signal summary — used ONLY to help Claude pick the right tone.
+    # None of these internals are permitted to appear in the letter text.
+    internal_signal = f"""
+INTERNAL REVIEW SIGNALS (for tone selection ONLY — never mention these in the letter):
+- Risk tier: {risk.tier if risk else 'LOW'}
+- Triggered fraud rules: {len(triggered_rules)}
+- Failed document checks: {len(failed_docs)}
+- Open/pending workflow tasks: {len(open_tasks)}
+"""
+
+    letter_prompt = f"""You are a claims correspondence officer at a car insurance company. Write a short, professional letter addressed to the policyholder about their claim.
+
+You are given internal review signals below. Use them ONLY to decide the appropriate outcome and tone. Choose ONE of these three situations based on the signals:
+  1. REVIEW COMPLETE, IN ORDER — if the internal signals are clean (LOW risk, no failed document checks, no open tasks). Reassure them their claim has been reviewed and is proceeding normally.
+  2. ADDITIONAL INFORMATION NEEDED — if there are failed document checks or open tasks but the situation is routine. Politely ask them to expect a follow-up / provide documentation, without alarm.
+  3. UNDER FURTHER REVIEW — if signals are elevated (MEDIUM/HIGH risk or triggered rules). Neutrally inform them their claim requires additional review and that no action is needed from them at this time unless contacted.
+
+STRICT RULES FOR THE LETTER BODY:
+- NEVER mention: fraud, investigation, SIU, risk scores, risk tiers, rule names/IDs, watchlists, or any internal scoring.
+- Keep it to 2-3 short paragraphs. Warm, plain, professional. No jargon.
+- Reference the claim in general terms (claim reference, {claim_type} claim) — do not disclose internal findings.
+- Do not promise or deny the outcome of the claim; only describe the current status and next steps.
+- Format as a proper business letter in Markdown: date, addressee, salutation, body, and sign-off ("Claims Review Team").
+
+CLAIM CONTEXT:
+- Date: {today}
+- Claimant: {subject_name}
+- Claim reference: {claim_id}
+- Claim type: {claim_type} claim
+- Reported incident date: {incident_date}
+{internal_signal}
+Write only the letter, nothing else."""
+
+    try:
+        from agents.nodes import get_bedrock_llm
+        from langchain_core.messages import HumanMessage
+        llm = get_bedrock_llm(temperature=0.2, max_tokens=1024, agent_name="letter")
+        result = await asyncio.to_thread(llm.invoke, [HumanMessage(content=letter_prompt)])
+        letter_text = result.content if isinstance(result.content, str) else str(result.content)
+    except Exception as e:
+        traceback.print_exc()
+        return {"error": f"LLM generation failed: {str(e)[:300]}"}
+
+    # Cache it on the case
+    for c in data_ctx.case_queue:
+        if c.case_id == claim_id:
+            c.letter = letter_text
+            break
+
+    return {"claim_id": claim_id, "letter": letter_text, "generated_at": datetime.now().isoformat()}
 
 
 # ── Chat WebSocket ───────────────────────────────────────────────────────────

@@ -13,15 +13,22 @@ function tier(score) {
 
 export default function DossierPanel({ caseId }) {
   const dossierRef = useRef(null)
+  const letterRef = useRef(null)
   const [generating, setGenerating] = useState(false)
   const [aiGenerating, setAiGenerating] = useState(false)
   const [claim, setClaim] = useState(null)
   const [loading, setLoading] = useState(false)
   const [aiDossier, setAiDossier] = useState(null)
   const [aiError, setAiError] = useState(null)
+  const [letter, setLetter] = useState(null)
+  const [letterGenerating, setLetterGenerating] = useState(false)
+  const [letterError, setLetterError] = useState(null)
+  const [letterOpen, setLetterOpen] = useState(false)
+  const [letterPdfGenerating, setLetterPdfGenerating] = useState(false)
 
   useEffect(() => {
-    if (!caseId) { setClaim(null); setAiDossier(null); setAiError(null); return }
+    if (!caseId) { setClaim(null); setAiDossier(null); setAiError(null); setLetter(null); setLetterError(null); setLetterOpen(false); return }
+    setLetter(null); setLetterError(null); setLetterOpen(false)
     const load = async () => {
       setLoading(true)
       setAiDossier(null)
@@ -71,6 +78,46 @@ export default function DossierPanel({ caseId }) {
       setAiError('Failed to generate dossier. Check backend connection.')
     } finally {
       setAiGenerating(false)
+    }
+  }, [caseId])
+
+  const handleGenerateLetter = useCallback(async () => {
+    if (!caseId) return
+    setLetterOpen(true)
+    // Reuse an already-generated letter if present
+    if (letter) return
+    setLetterGenerating(true)
+    setLetterError(null)
+    try {
+      const res = await fetch(
+        `http://${window.location.hostname}:8000/api/claims/${caseId}/generate_letter`,
+        { method: 'POST' }
+      )
+      const data = await res.json()
+      if (data.error) { setLetterError(data.error); return }
+      setLetter(data.letter)
+    } catch {
+      setLetterError('Failed to generate letter. Check backend connection.')
+    } finally {
+      setLetterGenerating(false)
+    }
+  }, [caseId, letter])
+
+  const handleDownloadLetterPDF = useCallback(async () => {
+    if (!letterRef.current) return
+    setLetterPdfGenerating(true)
+    try {
+      const opt = {
+        margin:      [0.75, 0.75, 0.75, 0.75],
+        filename:    `claimant_letter_${caseId || 'unknown'}_${new Date().toISOString().slice(0, 10)}.pdf`,
+        image:       { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF:       { unit: 'in', format: 'letter', orientation: 'portrait' },
+        pagebreak:   { mode: ['avoid-all', 'css', 'legacy'] },
+      }
+      await html2pdf().set(opt).from(letterRef.current).save()
+    } finally {
+      setLetterPdfGenerating(false)
     }
   }, [caseId])
 
@@ -174,6 +221,22 @@ export default function DossierPanel({ caseId }) {
             )}
           </button>
           <button
+            onClick={handleGenerateLetter}
+            disabled={letterGenerating}
+            title="Generate a short, plain-language letter to send to the claimant"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 11, fontWeight: 600, padding: '7px 16px', borderRadius: 'var(--r-btn)',
+              textTransform: 'uppercase', letterSpacing: '0.04em',
+              background: 'transparent',
+              color: 'var(--c-blue)', border: '1px solid var(--c-blue)',
+              cursor: letterGenerating ? 'default' : 'pointer',
+              opacity: letterGenerating ? 0.6 : 1,
+            }}
+          >
+            {letterGenerating ? 'Writing…' : '✉ Claimant Letter'}
+          </button>
+          <button
             onClick={handleDownloadPDF}
             disabled={generating}
             style={{
@@ -233,6 +296,99 @@ export default function DossierPanel({ caseId }) {
           <Markdown remarkPlugins={[remarkGfm]}>{dossierMarkdown}</Markdown>
         </div>
       </div>
+
+      {/* Claimant letter modal */}
+      {letterOpen && (
+        <div
+          onClick={() => setLetterOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 680, maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+              borderRadius: 'var(--r-card)', background: 'var(--c-surface)',
+              border: '1px solid var(--c-border)', boxShadow: 'var(--c-shadow-md, 0 10px 40px rgba(0,0,0,0.3))',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Modal header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px',
+              borderBottom: '1px solid var(--c-border)',
+            }}>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>
+                  Claimant Letter — {claim.case_id}
+                </h3>
+                <div style={{ fontSize: 11, color: 'var(--c-text-dim)', marginTop: 2 }}>
+                  Plain-language notice for {claim.subject_name}
+                </div>
+              </div>
+              {letter && !letterGenerating && (
+                <button
+                  onClick={handleDownloadLetterPDF}
+                  disabled={letterPdfGenerating}
+                  style={{
+                    fontSize: 11, fontWeight: 600, padding: '7px 14px', borderRadius: 'var(--r-btn)',
+                    textTransform: 'uppercase', letterSpacing: '0.04em',
+                    background: 'transparent', color: 'var(--c-accent)', border: '1px solid var(--c-accent)',
+                    cursor: letterPdfGenerating ? 'default' : 'pointer', opacity: letterPdfGenerating ? 0.6 : 1,
+                  }}
+                >
+                  {letterPdfGenerating ? 'Generating…' : 'Download PDF'}
+                </button>
+              )}
+              <button
+                onClick={() => setLetterOpen(false)}
+                style={{
+                  fontSize: 18, lineHeight: 1, padding: '4px 10px', borderRadius: 'var(--r-btn)',
+                  background: 'transparent', color: 'var(--c-text-dim)', border: 'none', cursor: 'pointer',
+                }}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div style={{ padding: 24, overflow: 'auto' }}>
+              {letterGenerating && (
+                <div style={{ textAlign: 'center', color: 'var(--c-blue)', fontSize: 13, padding: 20 }}>
+                  <span className="animate-pulse">✉</span> Drafting the claimant letter…
+                </div>
+              )}
+              {letterError && (
+                <div style={{
+                  padding: '10px 16px', borderRadius: 8,
+                  background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+                  fontSize: 12, color: '#ef4444',
+                }}>
+                  ⚠ {letterError}
+                </div>
+              )}
+              {letter && !letterGenerating && (
+                <div
+                  className="dossier-content"
+                  style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--c-text)' }}
+                >
+                  <Markdown remarkPlugins={[remarkGfm]}>{letter}</Markdown>
+                </div>
+              )}
+              {/* Hidden PDF clone (white background for print) */}
+              <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+                <div ref={letterRef} className="dossier-pdf-content" style={{ color: '#111' }}>
+                  {letter && <Markdown remarkPlugins={[remarkGfm]}>{letter}</Markdown>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

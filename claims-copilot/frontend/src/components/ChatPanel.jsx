@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import html2pdf from 'html2pdf.js'
 import { useCopilotChat } from '../hooks/useCopilotChat'
 
 const PRIORITY_COLORS = {
@@ -45,6 +46,53 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+
+  // DECREE full evaluation runs in the background; the bell surfaces its status.
+  // decreeEval: null | { loading } | { report_markdown, cost_*, confidence, ... } | { error }
+  const [decreeEval, setDecreeEval] = useState(null)
+  const [decreeSeen, setDecreeSeen] = useState(true)   // false once a result is ready but unopened
+  const [decreeOpen, setDecreeOpen] = useState(false)  // overlay visibility
+  const [decreePdfGenerating, setDecreePdfGenerating] = useState(false)
+  const decreeReportRef = useRef(null)
+
+  const downloadDecreePdf = async () => {
+    if (!decreeReportRef.current) return
+    setDecreePdfGenerating(true)
+    try {
+      const opt = {
+        margin:      [0.5, 0.6, 0.5, 0.6],
+        filename:    `decree_evaluation_${caseId || 'claim'}_${new Date().toISOString().slice(0, 10)}.pdf`,
+        image:       { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF:       { unit: 'in', format: 'letter', orientation: 'portrait' },
+        pagebreak:   { mode: ['avoid-all', 'css', 'legacy'] },
+      }
+      await html2pdf().set(opt).from(decreeReportRef.current).save()
+    } finally {
+      setDecreePdfGenerating(false)
+    }
+  }
+
+  const runDecreeFull = () => {
+    // Kick off in the background — do not block the UI.
+    setDecreeEval({ loading: true })
+    setDecreeSeen(true)
+    setDecreeOpen(false)
+    ;(async () => {
+      try {
+        const res = await fetch(`http://localhost:8000/api/claims/${caseId}/decree/full`)
+        const json = await res.json()
+        setDecreeEval(json.error ? { error: json.error } : json)
+      } catch {
+        setDecreeEval({ error: 'Could not reach the DECREE service.' })
+      }
+      setDecreeSeen(false)  // ready & unread → light up the bell
+    })()
+  }
+
+  const decreeBusy = decreeEval?.loading
+  const decreeReady = decreeEval && !decreeEval.loading
+  const bellAlert = decreeReady && !decreeSeen
 
   const chips = [...COMMON_CHIPS, ...(TYPE_CHIPS[caseSummary?.claim_type] || [])]
 
@@ -113,6 +161,36 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
               {caseSummary?.coverage_start && <span>Coverage: {caseSummary.coverage_start} – {caseSummary.coverage_end || 'Active'}</span>}
             </div>
           </div>
+          {/* DECREE notification bell — appears once a full evaluation is running or ready */}
+          {decreeEval && (
+            <button
+              onClick={() => { setDecreeOpen(true); setDecreeSeen(true) }}
+              title={decreeBusy ? 'DECREE evaluation running…' : 'DECREE full evaluation ready'}
+              style={{
+                position: 'relative', width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                border: '1px solid var(--c-border)', background: 'transparent',
+                color: bellAlert ? 'var(--c-blue)' : 'var(--c-text-dim)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 15, transition: 'all 0.15s',
+                animation: decreeBusy ? 'pulse 1.5s ease-in-out infinite' : 'none',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--c-accent-faint)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+            >
+              🔔
+              {bellAlert && (
+                <span style={{
+                  position: 'absolute', top: -3, right: -3,
+                  minWidth: 15, height: 15, padding: '0 3px', borderRadius: 8,
+                  background: '#ef4444', border: '2px solid var(--c-surface)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 9, fontWeight: 700, color: '#fff',
+                }}>
+                  {decreeEval.error ? '!' : '1'}
+                </span>
+              )}
+            </button>
+          )}
           <span style={{
             width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
             background: isConnected ? '#22c55e' : '#ef4444',
@@ -152,7 +230,7 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
       }}>
         {messages.map((msg, i) => (
           msg.role === 'checklist'
-            ? <ChecklistCard key={i} msg={msg} onStartAutoScan={onStartAutoScan} />
+            ? <ChecklistCard key={i} msg={msg} caseId={caseId} onStartAutoScan={onStartAutoScan} onRunDecreeFull={runDecreeFull} decreeBusy={decreeBusy} />
             : <MessageBubble key={i} msg={msg} onNavigateToDossier={onNavigateToDossier} />
         ))}
 
@@ -168,6 +246,11 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Checklist loading overlay */}
+      {checklistRunning && (
+        <ChecklistLoadingOverlay steps={checklistState?.steps} />
+      )}
 
       {/* Quick action chips */}
       <div style={{
@@ -224,6 +307,164 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
           Send
         </button>
       </div>
+
+      {/* DECREE full-evaluation overlay — opened from the notification bell */}
+      {decreeOpen && decreeEval && (
+        <div
+          onClick={() => setDecreeOpen(false)}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 9999, cursor: 'pointer',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'relative', width: 'min(760px, 92vw)', maxHeight: '90vh',
+              background: 'var(--c-surface)', borderRadius: 12,
+              boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+              overflow: 'hidden', display: 'flex', flexDirection: 'column',
+            }}
+          >
+            {/* Overlay header */}
+            <div style={{
+              padding: '12px 18px', display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between', borderBottom: '1px solid var(--c-border)',
+              background: 'linear-gradient(135deg, rgba(41,98,255,0.08) 0%, transparent 100%)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>📊</span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text)' }}>
+                    Full Damage Evaluation
+                  </div>
+                  <div style={{ fontSize: 9, color: 'var(--c-text-dim)', fontStyle: 'italic', marginTop: 1 }}>
+                    Powered by DECREE<sup>™</sup>
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {decreeReady && !decreeEval.error && decreeEval.report_markdown && (
+                  <div
+                    onClick={downloadDecreePdf}
+                    style={{
+                      padding: '5px 12px', display: 'inline-flex', alignItems: 'center', gap: 6,
+                      cursor: decreePdfGenerating ? 'default' : 'pointer',
+                      background: 'var(--c-blue-soft)', border: '1px solid rgba(41,98,255,0.2)',
+                      borderRadius: 8, fontSize: 11, fontWeight: 600,
+                      color: 'var(--c-blue)', opacity: decreePdfGenerating ? 0.6 : 1,
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => { if (!decreePdfGenerating) e.currentTarget.style.background = 'rgba(41,98,255,0.15)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'var(--c-blue-soft)' }}
+                  >
+                    {decreePdfGenerating ? '⏳ Generating…' : '⬇ Download PDF'}
+                  </div>
+                )}
+                <div
+                  onClick={() => setDecreeOpen(false)}
+                  style={{
+                    width: 28, height: 28, borderRadius: 8, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 14, color: 'var(--c-text-dim)', fontWeight: 700,
+                    background: 'rgba(100,116,139,0.1)', transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; e.currentTarget.style.color = '#ef4444' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(100,116,139,0.1)'; e.currentTarget.style.color = 'var(--c-text-dim)' }}
+                >
+                  ✕
+                </div>
+              </div>
+            </div>
+
+            {/* Overlay body */}
+            <div style={{ overflow: 'auto', padding: 20, cursor: 'default' }}>
+              {decreeEval.loading ? (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  justifyContent: 'center', gap: 16, padding: '48px 0',
+                }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: '50%',
+                    border: '3px solid var(--c-blue-soft)',
+                    borderTopColor: 'var(--c-blue)',
+                    animation: 'spin 0.8s linear infinite',
+                  }} />
+                  <div style={{ fontSize: 12, color: 'var(--c-text-dim)', fontWeight: 500 }}>
+                    Running full DECREE<sup>™</sup> evaluation…
+                  </div>
+                </div>
+              ) : decreeEval.error ? (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  gap: 12, padding: '40px 0', textAlign: 'center',
+                }}>
+                  <span style={{ fontSize: 28 }}>⚠️</span>
+                  <div style={{ fontSize: 12, color: 'var(--c-text)', maxWidth: 380 }}>
+                    {decreeEval.error}
+                  </div>
+                  <div
+                    onClick={runDecreeFull}
+                    style={{
+                      padding: '6px 14px', cursor: 'pointer', borderRadius: 8,
+                      background: 'var(--c-blue-soft)', border: '1px solid rgba(41,98,255,0.2)',
+                      fontSize: 11, fontWeight: 600, color: 'var(--c-blue)',
+                    }}
+                  >
+                    Retry
+                  </div>
+                </div>
+              ) : (
+                <div ref={decreeReportRef}>
+                  {(decreeEval.cost_low != null && decreeEval.cost_high != null) && (
+                    <div style={{
+                      display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'baseline',
+                      padding: '10px 14px', marginBottom: 16, borderRadius: 8,
+                      background: 'var(--c-accent-faint)', border: '1px solid var(--c-border)',
+                    }}>
+                      <div>
+                        <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--c-text-dim)' }}>Estimated cost</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text)' }}>
+                          ${decreeEval.cost_low.toLocaleString()}–${decreeEval.cost_high.toLocaleString()}
+                          {decreeEval.cost_mid != null && (
+                            <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--c-text-dim)' }}>
+                              {'  (midpoint $'}{decreeEval.cost_mid.toLocaleString()}{')'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {decreeEval.confidence != null && (
+                        <div>
+                          <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--c-text-dim)' }}>Confidence</div>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text)' }}>
+                            {decreeEval.confidence}%
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 12, color: 'var(--c-text)', lineHeight: 1.6 }}>
+                    <Markdown remarkPlugins={[remarkGfm]}>
+                      {decreeEval.report_markdown || '_No report content returned._'}
+                    </Markdown>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CSS animations for the DECREE spinner + notification bell */}
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.6; transform: scale(0.92); }
+        }
+      `}</style>
     </div>
   )
 }
@@ -332,7 +573,185 @@ const STATUS_CONFIG = {
   error:        { icon: '⚠', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)',   label: 'Error' },
 }
 
-function ChecklistCard({ msg, onStartAutoScan }) {
+const CHECKLIST_QUIPS = [
+  { icon: '🔍', text: 'Verifying the claim paperwork is not written in crayon…' },
+  { icon: '🚗', text: 'Checking if the car actually exists and isn\'t a LEGO set…' },
+  { icon: '📸', text: 'Counting pixels in damage photos. Every dent tells a story.' },
+  { icon: '🔮', text: 'Consulting the actuarial oracle for cosmic guidance…' },
+  { icon: '📋', text: 'Cross-referencing 47 databases. The databases are judging us.' },
+  { icon: '🕵️', text: 'Looking for red flags. And yellow ones. And slightly suspicious beige ones.' },
+  { icon: '💸', text: 'Calculating if the repair costs more than the car is worth…' },
+  { icon: '🧾', text: 'Reading every receipt ever submitted in the history of insurance.' },
+  { icon: '🤖', text: 'AI is thinking very hard. Please offer it encouragement.' },
+  { icon: '📊', text: 'Running risk models. The math is being very dramatic about it.' },
+  { icon: '🗂️', text: 'Filing things alphabetically. "Suspicious" comes after "Suspicious-ish".' },
+  { icon: '⚖️', text: 'Weighing the evidence. The scale tips slightly toward paperwork.' },
+  { icon: '🏎️', text: 'Checking if the vehicle speed matches the excuse given…' },
+  { icon: '📡', text: 'Pinging satellite data. The satellite is also confused.' },
+  { icon: '🔦', text: 'Shining a light into the dark corners of this claim…' },
+]
+
+function ChecklistLoadingOverlay({ steps }) {
+  const [quipIndex, setQuipIndex] = useState(0)
+  const [fade, setFade] = useState(true)
+  const [dots, setDots] = useState(0)
+
+  const completedCount = steps ? steps.filter(s => !['pending', 'running'].includes(s.status)).length : 0
+  const totalSteps = steps ? steps.length : 7
+  const pct = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0
+  const runningStep = steps ? steps.find(s => s.status === 'running') : null
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFade(false)
+      setTimeout(() => {
+        setQuipIndex(i => (i + 1) % CHECKLIST_QUIPS.length)
+        setFade(true)
+      }, 300)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const interval = setInterval(() => setDots(d => (d + 1) % 4), 400)
+    return () => clearInterval(interval)
+  }, [])
+
+  const quip = CHECKLIST_QUIPS[quipIndex]
+  const circumference = 2 * Math.PI * 36
+  const strokeDash = circumference - (pct / 100) * circumference
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(10,10,20,0.72)', backdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 800,
+    }}>
+      <div style={{
+        background: 'var(--c-surface)',
+        border: '1px solid var(--c-border)',
+        borderRadius: 20,
+        padding: '36px 44px',
+        maxWidth: 440,
+        width: '90vw',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 24,
+        boxShadow: '0 32px 80px rgba(0,0,0,0.45), 0 0 0 1px rgba(161,0,255,0.08)',
+      }}>
+
+        {/* Animated ring */}
+        <div style={{ position: 'relative', width: 96, height: 96 }}>
+          <svg width="96" height="96" viewBox="0 0 96 96" style={{ transform: 'rotate(-90deg)' }}>
+            {/* Track */}
+            <circle cx="48" cy="48" r="36" fill="none" stroke="var(--c-border)" strokeWidth="5" />
+            {/* Progress arc */}
+            <circle
+              cx="48" cy="48" r="36" fill="none"
+              stroke="url(#clGrad)" strokeWidth="5"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDash}
+              style={{ transition: 'stroke-dashoffset 0.6s cubic-bezier(0.4,0,0.2,1)' }}
+            />
+            <defs>
+              <linearGradient id="clGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#a100ff" />
+                <stop offset="100%" stopColor="#2962ff" />
+              </linearGradient>
+            </defs>
+          </svg>
+          {/* Center icon */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexDirection: 'column', gap: 2,
+          }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--c-text)', letterSpacing: '-0.5px' }}>
+              {pct}%
+            </span>
+            <span style={{ fontSize: 9, color: 'var(--c-text-dim)', fontWeight: 600 }}>
+              {completedCount}/{totalSteps}
+            </span>
+          </div>
+        </div>
+
+        {/* Title */}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '-0.2px' }}>
+            Running 7-Step Examiner Checklist
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--c-text-dim)', marginTop: 4 }}>
+            {runningStep
+              ? <>Analysing: <span style={{ color: 'var(--c-accent)', fontWeight: 600 }}>{runningStep.step_name}</span></>
+              : 'Preparing examination…'}
+            {'.'.repeat(dots)}
+          </div>
+        </div>
+
+        {/* Step pills */}
+        {steps && (
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 340 }}>
+            {steps.map((s, i) => {
+              const isRunning = s.status === 'running'
+              const isDone = !['pending', 'running'].includes(s.status)
+              const color = s.status === 'pass' ? '#22c55e'
+                : s.status === 'fail' ? '#ef4444'
+                : s.status === 'needs_review' ? '#f59e0b'
+                : isRunning ? '#a100ff'
+                : 'var(--c-border)'
+              return (
+                <div key={i} title={s.step_name} style={{
+                  height: 6, width: isDone || isRunning ? 28 : 18,
+                  borderRadius: 3,
+                  background: color,
+                  opacity: s.status === 'pending' ? 0.25 : 1,
+                  transition: 'all 0.4s cubic-bezier(0.4,0,0.2,1)',
+                  animation: isRunning ? 'clPulse 1.2s ease-in-out infinite' : 'none',
+                }} />
+              )
+            })}
+          </div>
+        )}
+
+        {/* Rotating quip */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(161,0,255,0.06) 0%, rgba(41,98,255,0.05) 100%)',
+          border: '1px solid var(--c-border)',
+          borderRadius: 12,
+          padding: '14px 18px',
+          width: '100%',
+          minHeight: 60,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          transition: 'opacity 0.3s ease',
+          opacity: fade ? 1 : 0,
+        }}>
+          <span style={{ fontSize: 22, flexShrink: 0 }}>{quip.icon}</span>
+          <span style={{ fontSize: 12, color: 'var(--c-text-dim)', lineHeight: 1.5, fontStyle: 'italic' }}>
+            {quip.text}
+          </span>
+        </div>
+
+        <div style={{ fontSize: 10, color: 'var(--c-text-dim)', opacity: 0.5, letterSpacing: '0.5px' }}>
+          YOUR CLAIM IS IN GOOD HANDS
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes clPulse {
+          0%, 100% { opacity: 1; transform: scaleX(1); }
+          50% { opacity: 0.5; transform: scaleX(0.85); }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+function ChecklistCard({ msg, onStartAutoScan, onRunDecreeFull, decreeBusy }) {
   const [expandedStep, setExpandedStep] = useState(null)
   const [docImageUrl, setDocImageUrl] = useState(null)
   const { steps, summary, complete } = msg
@@ -508,6 +927,49 @@ function ChecklistCard({ msg, onStartAutoScan }) {
                         🔍 View Source Document
                       </div>
                     )}
+
+                    {/* DECREE full-evaluation affordance — Damage Documentation step only */}
+                    {step.step_number === 2 && step.details?.decree && (
+                      <div style={{ marginTop: 10 }}>
+                        {(step.details.cost_low != null && step.details.cost_high != null) && (
+                          <div style={{
+                            fontSize: 11, fontWeight: 700, color: 'var(--c-text)',
+                            marginBottom: 6,
+                          }}>
+                            ${step.details.cost_low.toLocaleString()}–${step.details.cost_high.toLocaleString()}
+                            {step.details.confidence != null && (
+                              <span style={{ fontWeight: 500, color: 'var(--c-text-dim)' }}>
+                                {'  ·  '}{step.details.confidence}% confidence
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <div
+                          onClick={(e) => { e.stopPropagation(); if (!decreeBusy) onRunDecreeFull() }}
+                          style={{
+                            padding: '6px 12px', display: 'inline-flex',
+                            alignItems: 'center', gap: 6,
+                            cursor: decreeBusy ? 'default' : 'pointer',
+                            background: 'var(--c-blue-soft)', border: '1px solid rgba(41,98,255,0.2)',
+                            borderRadius: 8, fontSize: 11, fontWeight: 600,
+                            color: 'var(--c-blue)', opacity: decreeBusy ? 0.7 : 1,
+                            transition: 'all 0.15s',
+                          }}
+                          onMouseEnter={e => { if (!decreeBusy) e.currentTarget.style.background = 'rgba(41,98,255,0.15)' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'var(--c-blue-soft)' }}
+                        >
+                          {decreeBusy
+                            ? '⏳ Running in background — see 🔔'
+                            : '📊 Click here for full evaluation →'}
+                        </div>
+                        <div style={{
+                          fontSize: 9, color: 'var(--c-text-dim)', fontStyle: 'italic',
+                          marginTop: 4, marginLeft: 2,
+                        }}>
+                          Powered by DECREE<sup>™</sup>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -642,6 +1104,9 @@ function ChecklistCard({ msg, onStartAutoScan }) {
         @keyframes pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.6; transform: scale(0.92); }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>

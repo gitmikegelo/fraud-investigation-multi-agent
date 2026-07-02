@@ -191,6 +191,7 @@ export function useCopilotChat(caseId) {
       text: '▶ Run Full Checklist',
       timestamp: new Date().toISOString(),
     }])
+    setChecklistRunning(true)
     wsRef.current.send(JSON.stringify({ action: 'run_checklist' }))
   }, [])
 

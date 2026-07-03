@@ -102,7 +102,7 @@ export default function RiskDashboard({ onSelectClaim }) {
                 <tbody>
                   {topRules.slice(0, 10).map(([ruleId, count], i) => (
                     <tr key={i}>
-                      <td style={{ padding: '4px 0', color: '#818cf8', fontFamily: 'ui-monospace, monospace', fontWeight: 600, fontSize: 11 }}>{ruleId}</td>
+                      <td style={{ padding: '4px 0', color: 'var(--c-accent)', fontFamily: 'ui-monospace, monospace', fontWeight: 600, fontSize: 11 }}>{ruleId}</td>
                       <td style={{ padding: '4px 0', textAlign: 'right', color: 'var(--c-text)', fontWeight: 600 }}>{count}</td>
                     </tr>
                   ))}

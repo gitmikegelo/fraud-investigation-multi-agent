@@ -158,9 +158,9 @@ export default function DossierPanel({ caseId }) {
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
               fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 8,
-              background: aiGenerating ? 'var(--c-surface2)' : 'rgba(99,102,241,0.85)',
-              color: aiGenerating ? '#6366f1' : '#fff',
-              border: '1px solid rgba(99,102,241,0.3)',
+              background: aiGenerating ? 'var(--c-surface2)' : 'var(--c-accent)',
+              color: aiGenerating ? 'var(--c-accent)' : '#fff',
+              border: '1px solid var(--c-accent-soft)',
               cursor: aiGenerating ? 'default' : 'pointer',
               opacity: aiGenerating ? 0.7 : 1, transition: 'all 0.15s',
             }}

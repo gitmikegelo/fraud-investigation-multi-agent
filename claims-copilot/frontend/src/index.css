@@ -2,25 +2,41 @@
 
 /* ── Design tokens ─────────────────────────────────────────────────── */
 :root {
-  /* Backgrounds */
-  --c-bg:           #f4f6f9;
+  /* Backgrounds — pale pastel wash, cards on top */
+  --c-bg:           #f3f1fb;
   --c-surface:      #ffffff;
-  --c-surface2:     #f8fafc;
-  --c-surface3:     #f1f5f9;
+  --c-surface2:     #faf9ff;
+  --c-surface3:     #f3f1fb;
 
-  /* Borders */
-  --c-border:       #e2e8f0;
-  --c-border2:      #cbd5e1;
+  /* Borders — thin, light */
+  --c-border:       #ece9f5;
+  --c-border2:      #ddd8ec;
 
   /* Text */
-  --c-text:         #0f172a;
-  --c-text-dim:     #64748b;
-  --c-text-muted:   #94a3b8;
+  --c-text:         #1a1430;
+  --c-text-dim:     #6b6786;
+  --c-text-muted:   #9b97b3;
 
-  /* Accent — indigo */
-  --c-accent:       #4f46e5;
-  --c-accent-light: #eef2ff;
-  --c-accent-mid:   #818cf8;
+  /* Accent — purple→magenta. Used sparingly, pops on pale bg. */
+  --c-accent:       #a100ff;
+  --c-accent-hover: #b51fff;
+  --c-accent-light: #f5ebff;
+  --c-accent-mid:   #c44fff;
+  --c-accent-soft:  rgba(161,0,255,0.10);
+  --c-accent-faint: rgba(161,0,255,0.05);
+
+  /* Secondary accent — clean medium blue (step badges, icon circles, links) */
+  --c-blue:         #2962ff;
+  --c-blue-light:   #ebf1ff;
+  --c-blue-soft:    rgba(41,98,255,0.10);
+
+  /* Soft, diffuse shadows */
+  --c-shadow-sm:    0 1px 3px rgba(80,60,140,0.04), 0 4px 12px rgba(80,60,140,0.05);
+  --c-shadow-md:    0 4px 16px rgba(80,60,140,0.06), 0 12px 32px rgba(80,60,140,0.07);
+
+  /* Radii */
+  --r-card:         14px;
+  --r-btn:          8px;
 
   /* Semantic */
   --c-green:        #16a34a;
@@ -32,16 +48,16 @@
   --c-red:          #dc2626;
   --c-red-bg:       #fef2f2;
   --c-red-border:   #fecaca;
-  --c-purple:       #7c3aed;
+  --c-purple:       #a100ff;
   --c-cyan:         #0891b2;
 
-  /* Sidebar */
-  --c-sidebar:         #0f172a;
-  --c-sidebar-surface: #1e293b;
-  --c-sidebar-hover:   rgba(255,255,255,0.06);
-  --c-sidebar-active:  rgba(99,102,241,0.18);
-  --c-sidebar-text:    #94a3b8;
-  --c-sidebar-border:  rgba(255,255,255,0.07);
+  /* Sidebar — light/airy to match the pale enterprise dashboard feel */
+  --c-sidebar:         #ffffff;
+  --c-sidebar-surface: #faf9ff;
+  --c-sidebar-hover:   rgba(161,0,255,0.05);
+  --c-sidebar-active:  rgba(161,0,255,0.10);
+  --c-sidebar-text:    #6b6786;
+  --c-sidebar-border:  #ece9f5;
 
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   color: var(--c-text);
@@ -53,6 +69,11 @@
 body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
+  /* Soft, very subtle diagonal gradient: pale lavender → light blue → near-white */
+  background:
+    linear-gradient(135deg, #f4eeff 0%, #eef2ff 45%, #fbfaff 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
 }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────── */
@@ -67,7 +88,7 @@ body {
   70%  { transform: scale(1.7); opacity: 0; }
   100% { transform: scale(1.7); opacity: 0; }
 }
-.node-pulse { animation: pulse-ring 1.5s ease-out infinite; }
+.node-pulse { animation: pulse-ring 1.5s ease-out infinite; transform-box: fill-box; transform-origin: center; }
 
 /* ── Glow for active edges ───────────────────────────────────────────── */
 @keyframes edge-flow {
@@ -85,13 +106,82 @@ body {
 }
 .log-entry { animation: fade-in-up 0.2s ease-out; }
 
+/* ══════════════════════════════════════════════════════════════════════
+   Agent Operations Console — scoped motion (graph canvas + feed)
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Flowing dashed gradient along the active edge (data-in-motion) */
+@keyframes console-edge-flow {
+  to { stroke-dashoffset: -24; }
+}
+.console-edge-active {
+  stroke-dasharray: 6 6;
+  animation: console-edge-flow 0.7s linear infinite;
+}
+
+/* Handoff: node briefly scales up then settles */
+@keyframes console-handoff-pop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+.console-node-active {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: console-handoff-pop 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Active-node halo breathing */
+@keyframes console-halo-breathe {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.7; }
+}
+.console-node-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: console-halo-breathe 2.2s ease-in-out infinite;
+}
+
+/* Loop/timer ring fill */
+@keyframes console-ring-spin {
+  to { transform: rotate(360deg); }
+}
+.console-loop-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: console-ring-spin 2.4s linear infinite;
+}
+
+/* Feed rows: slide + fade in at the top */
+@keyframes console-row-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.console-row-in {
+  animation: console-row-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Respect reduced-motion: kill the flowing / pulsing / breathing effects */
+@media (prefers-reduced-motion: reduce) {
+  .node-pulse,
+  .edge-active,
+  .console-edge-active,
+  .console-node-active,
+  .console-node-halo,
+  .console-loop-ring,
+  .console-row-in {
+    animation: none !important;
+  }
+  .console-edge-active { stroke-dasharray: none; }
+}
+
 /* ── Chat markdown ───────────────────────────────────────────────────── */
 .chat-markdown p       { margin: 0.3rem 0; }
 .chat-markdown ul      { padding-left: 1.25rem; margin: 0.3rem 0; }
 .chat-markdown ol      { padding-left: 1.25rem; margin: 0.3rem 0; }
 .chat-markdown li      { margin: 0.15rem 0; }
 .chat-markdown strong  { font-weight: 600; color: var(--c-text); }
-.chat-markdown code    { background: rgba(99,102,241,0.08); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
+.chat-markdown code    { background: var(--c-accent-faint); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
 .chat-markdown pre     { background: var(--c-surface2); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 0.85em; border: 1px solid var(--c-border); margin: 0.4rem 0; }
 .chat-markdown table   { width: 100%; border-collapse: collapse; margin: 0.4rem 0; font-size: 0.85em; }
 .chat-markdown th      { padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--c-border2); font-weight: 600; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--c-text-dim); }
@@ -135,7 +225,7 @@ body {
   font-size: 11px;
   line-height: 1.6;
 }
-.dossier-pdf-content h1 { font-size: 18px; font-weight: 700; margin: 18px 0 8px; color: #0f172a; border-bottom: 2px solid #4f46e5; padding-bottom: 4px; }
+.dossier-pdf-content h1 { font-size: 18px; font-weight: 700; margin: 18px 0 8px; color: #0f172a; border-bottom: 2px solid #a100ff; padding-bottom: 4px; }
 .dossier-pdf-content h2 { font-size: 14px; font-weight: 600; margin: 14px 0 6px; color: #1e293b; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; }
 .dossier-pdf-content h3 { font-size: 12px; font-weight: 600; margin: 10px 0 4px; color: #334155; }
 .dossier-pdf-content p  { margin: 4px 0; }

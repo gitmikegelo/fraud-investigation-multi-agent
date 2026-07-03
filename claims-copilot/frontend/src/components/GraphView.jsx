@@ -5,24 +5,24 @@ import { useMemo } from 'react'
  *
  *          [START]
  *             |
- *        [Analysis] ΓåÉ Isolation Forest + Connection Analysis
+ *        [Analysis] <- Isolation Forest + Connection Analysis
  *             |
- *        [Orchestrator]  ΓåÉΓöÇΓöÇΓöÇΓöÇ [Dossier]
- *             |                    Γåæ
- *       [Investigation] ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ
+ *        [Orchestrator]  <---- [Dossier]
+ *             |                    ^
+ *       [Investigation] ----------/
  *             |
  *           [END]
  *
- * We lay this out on an SVG canvas.
+ * Rendered on a dark "Agent Operations Console" canvas.
  */
 
 const NODES = [
-  { id: 'start',         x: 300, y: 20,  label: 'START',          type: 'terminal' },
-  { id: 'analysis',      x: 300, y: 85,  label: 'Initial Analysis', type: 'analysis', desc: 'Isolation Forest ΓÇó Graph Analysis' },
-  { id: 'orchestrator',  x: 300, y: 165, label: 'Orchestrator',   type: 'agent',   desc: 'Lead Investigator' },
-  { id: 'investigation', x: 150, y: 270, label: 'Investigation',  type: 'agent',   desc: 'Detective Agent' },
-  { id: 'dossier',       x: 450, y: 270, label: 'Dossier',        type: 'agent',   desc: 'Case Writer' },
-  { id: 'end',           x: 300, y: 340, label: 'END',            type: 'terminal' },
+  { id: 'start',         x: 300, y: 20,  label: 'START',           type: 'terminal' },
+  { id: 'analysis',      x: 300, y: 85,  label: 'Initial Analysis', type: 'analysis', desc: 'Isolation Forest \u2022 Graph Analysis' },
+  { id: 'orchestrator',  x: 300, y: 165, label: 'Orchestrator',    type: 'agent',   desc: 'Lead Investigator' },
+  { id: 'investigation', x: 150, y: 270, label: 'Investigation',   type: 'agent',   desc: 'Detective Agent' },
+  { id: 'dossier',       x: 450, y: 270, label: 'Dossier',         type: 'agent',   desc: 'Case Writer' },
+  { id: 'end',           x: 300, y: 340, label: 'END',             type: 'terminal' },
 ]
 
 const EDGES = [
@@ -35,387 +35,337 @@ const EDGES = [
   { from: 'dossier',       to: 'orchestrator',   label: 'assess' },
 ]
 
-const NODE_COLORS = {
-  start:         { bg: '#f8fafc', border: '#94a3b8', text: '#475569' },
-  analysis:      { bg: '#faf5ff', border: '#a855f7', text: '#7c3aed' },
-  orchestrator:  { bg: '#eff6ff', border: '#3b82f6', text: '#1d4ed8' },
-  investigation: { bg: '#f0fdf4', border: '#22c55e', text: '#15803d' },
-  dossier:       { bg: '#fffbeb', border: '#f59e0b', text: '#b45309' },
-  end:           { bg: '#f8fafc', border: '#94a3b8', text: '#475569' },
+// One accent system
+//   purple  -> orchestrator / control
+//   blue    -> analysis (Prudential Isolation Forest step)
+//   green   -> active / processing (investigation)
+//   amber   -> output / writer (dossier)
+//   neutral -> terminals (start / end)
+const ACCENT = {
+  purple:  '#a855f7',
+  blue:    '#2962ff',
+  green:   '#22c55e',
+  amber:   '#f59e0b',
+  neutral: '#64748b',
 }
 
-const ACTIVE_GLOW = {
-  start:         '#a855f7',
-  analysis:      '#a855f7',
-  orchestrator:  '#3b82f6',
-  investigation: '#22c55e',
-  dossier:       '#f59e0b',
+const NODE_ROLE = {
+  start:         'neutral',
+  analysis:      'blue',
+  orchestrator:  'purple',
+  investigation: 'green',
+  dossier:       'amber',
+  end:           'neutral',
 }
 
-// Node dimensions
+// Dark-canvas node surface tints (subtle, accent-derived)
+const NODE_SURFACE = {
+  neutral: '#1a2030',
+  purple:  '#231a36',
+  blue:    '#111d3c',
+  green:   '#13261c',
+  amber:   '#2a2113',
+}
+
+const CANVAS_BG   = '#10141d'
+const IDLE_EDGE   = '#323a4d'
+const DIM_OPACITY = 0.4
+
+function nodeSurface(id) { return NODE_SURFACE[NODE_ROLE[id]] || NODE_SURFACE.neutral }
+
 function getNodeDimensions(id) {
   const node = NODES.find(n => n.id === id)
   if (!node) return { w: 0, h: 0 }
   const isTerminal = node.type === 'terminal'
   const isAnalysis = node.type === 'analysis'
-  return {
-    w: isTerminal ? 80 : isAnalysis ? 150 : 130,
-    h: isTerminal ? 30 : 50
-  }
+  let w = 140
+  if (isTerminal) w = 84
+  else if (isAnalysis) w = 150
+  return { w, h: isTerminal ? 30 : 52 }
 }
 
 function getNodePos(id) {
   return NODES.find(n => n.id === id)
 }
 
-function edgePath(from, to) {
+function calcEdgePath(from, to) {
   const a = getNodePos(from)
   const b = getNodePos(to)
   if (!a || !b) return ''
 
   const dimA = getNodeDimensions(from)
   const dimB = getNodeDimensions(to)
-
-  // Calculate edge attachment points based on direction
   const dx = b.x - a.x
   const dy = b.y - a.y
-
   let startX, startY, endX, endY
 
-  // Determine start point (from node edge)
   if (Math.abs(dx) > Math.abs(dy)) {
-    // Horizontal-ish: exit from side
     startX = a.x + (dx > 0 ? dimA.w / 2 : -dimA.w / 2)
     startY = a.y
+    endX   = b.x + (dx > 0 ? -dimB.w / 2 - 4 : dimB.w / 2 + 4)
+    endY   = b.y
   } else {
-    // Vertical-ish: exit from top/bottom
     startX = a.x
     startY = a.y + (dy > 0 ? dimA.h / 2 : -dimA.h / 2)
+    endX   = b.x
+    endY   = b.y + (dy > 0 ? -dimB.h / 2 - 4 : dimB.h / 2 + 4)
   }
 
-  // Determine end point (to node edge)
-  if (Math.abs(dx) > Math.abs(dy)) {
-    // Horizontal-ish: enter from side
-    endX = b.x + (dx > 0 ? -dimB.w / 2 - 4 : dimB.w / 2 + 4)
-    endY = b.y
-  } else {
-    // Vertical-ish: enter from top/bottom
-    endX = b.x
-    endY = b.y + (dy > 0 ? -dimB.h / 2 - 4 : dimB.h / 2 + 4)
-  }
-
-  // For edges that go back up (investigationΓåÆorchestrator, dossierΓåÆorchestrator),
-  // use a curve and adjust attachment points
+  // Return paths (investigation->orchestrator, dossier->orchestrator)
   if (b.y < a.y) {
-    // Exit from top of source node
     startY = a.y - dimA.h / 2
-    // Enter from bottom of target node
-    endY = b.y + dimB.h / 2 + 4
-    
+    endY   = b.y + dimB.h / 2 + 4
     const midX = (startX + endX) / 2 + (dx > 0 ? -50 : 50)
     const midY = (startY + endY) / 2
     return `M ${startX} ${startY} Q ${midX} ${midY} ${endX} ${endY}`
   }
 
-  // Check if diagonal - use slight curve for orchestrator -> investigation/dossier
+  // Diagonal curves: orchestrator -> investigation / dossier
   if (from === 'orchestrator' && (to === 'investigation' || to === 'dossier')) {
-    // Exit from bottom-left or bottom-right
     startX = a.x + (dx > 0 ? 30 : -30)
     startY = a.y + dimA.h / 2
-    // Enter from top of target
-    endX = b.x
-    endY = b.y - dimB.h / 2 - 4
-    
-    const cX = startX
-    const cY = endY - 20
-    return `M ${startX} ${startY} Q ${cX} ${cY} ${endX} ${endY}`
+    endX   = b.x
+    endY   = b.y - dimB.h / 2 - 4
+    return `M ${startX} ${startY} Q ${startX} ${endY - 20} ${endX} ${endY}`
   }
 
   return `M ${startX} ${startY} L ${endX} ${endY}`
 }
 
-export default function GraphView({ activeNode, phase, nodeHistory, isRunning, initialClaims = [] }) {
-  // Determine which nodes have been visited (for completed styling)
+export default function GraphView({ activeNode, nodeHistory, isRunning, loopCount = 0, elapsed = 0, initialClaims = [] }) {
   const visitedSet = useMemo(() => new Set(nodeHistory), [nodeHistory])
 
-  // Determine active edge based on the last transition (previous node -> current node)
   const activeEdge = useMemo(() => {
     if (!activeNode || nodeHistory.length < 2) return null
-    // Find the last occurrence of activeNode in history and get the node before it
     for (let i = nodeHistory.length - 1; i >= 0; i--) {
       if (nodeHistory[i] === activeNode && i > 0) {
-        const prev = nodeHistory[i - 1]
-        return `${prev}->${activeNode}`
+        return `${nodeHistory[i - 1]}->${activeNode}`
       }
     }
     return null
   }, [activeNode, nodeHistory])
 
-  // Get the color for the active edge based on source node
-  const getEdgeColor = (from, isActive) => {
-    if (!isActive) return '#cbd5e1'
-    // Use the source node's color for the arrow
-    if (from === 'start') return '#a855f7'
-    if (from === 'analysis') return '#a855f7'
-    if (from === 'orchestrator') return '#3b82f6'
-    if (from === 'investigation') return '#22c55e'
-    if (from === 'dossier') return '#f59e0b'
-    return '#3b82f6'
-  }
-
-  // Show claims panel only after analysis is done (once orchestrator appears in history)
   const analysisComplete = nodeHistory.includes('orchestrator')
-
-  console.log('GraphView debug:', { nodeHistory, initialClaims, analysisComplete, activeNode })
+  const renderableNodes  = NODES.filter(n => n.label && n.label.trim().length > 0)
 
   return (
-    <div className="w-full h-full flex" style={{ background: 'transparent' }}>
-      {/* Initial Claims Panel - only shown after analysis completes */}
+    <div
+      className="w-full h-full flex"
+      style={{ background: `radial-gradient(120% 90% at 50% 0%, #161b27 0%, ${CANVAS_BG} 70%)` }}
+    >
+      {/* Initial Claims Panel - shown after analysis completes */}
       {analysisComplete && initialClaims.length > 0 && (
-        <div 
+        <div
           className="flex-shrink-0 overflow-y-auto p-3"
-          style={{ 
-            width: '180px', 
-            borderRight: '1px solid var(--c-border)',
-            background: 'var(--c-surface)',
-            borderRadius: '0'
-          }}
+          style={{ width: '180px', borderRight: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
         >
-          <div className="text-xs font-semibold mb-2" style={{ color: 'var(--c-text-dim)' }}>
+          <div className="text-[11px] font-semibold mb-2 tracking-wide" style={{ color: '#8b93a7' }}>
             INITIAL CLAIMS ({initialClaims.length})
           </div>
           <div className="space-y-1.5">
-            {initialClaims.map((claim, i) => (
-              <div 
-                key={claim.entity_id || i}
-                className="p-2 rounded text-xs"
-                style={{ 
-                  background: 'var(--c-surface2)', 
-                  border: '1px solid var(--c-border)'
-                }}
+            {initialClaims.map((claim, idx) => (
+              <div
+                key={claim.entity_id || idx}
+                className="p-2 rounded-lg text-xs"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
               >
-                <div className="font-medium truncate" style={{ color: 'var(--c-text)' }}>
-                  {claim.entity_id}
-                </div>
-                <div className="flex justify-between mt-1" style={{ color: 'var(--c-text-dim)' }}>
+                <div className="font-medium truncate" style={{ color: '#e6e9f0' }}>{claim.entity_id}</div>
+                <div className="flex justify-between mt-1" style={{ color: '#8b93a7' }}>
                   <span>Score: {claim.anomaly_score}</span>
-                  <span 
-                    className="px-1 rounded text-[10px]"
-                    style={{ 
-                      background: claim.anomaly_score >= 0.7 ? 'var(--c-red-bg)' : 'var(--c-amber-bg)',
-                      color: claim.anomaly_score >= 0.7 ? 'var(--c-red)' : 'var(--c-amber)'
+                  <span
+                    className="px-1.5 rounded text-[10px] font-semibold"
+                    style={{
+                      background: claim.anomaly_score >= 0.7 ? 'rgba(239,68,68,0.18)' : 'rgba(245,158,11,0.18)',
+                      color:      claim.anomaly_score >= 0.7 ? '#fca5a5'              : '#fcd34d',
                     }}
-                  >
-                    {claim.anomaly_score >= 0.7 ? 'HIGH' : 'MED'}
-                  </span>
+                  >{claim.anomaly_score >= 0.7 ? 'HIGH' : 'MED'}</span>
                 </div>
                 {claim.total_billed > 0 && (
-                  <div className="mt-1" style={{ color: 'var(--c-text-dim)' }}>
-                    ${claim.total_billed.toLocaleString()}
-                  </div>
+                  <div className="mt-1" style={{ color: '#8b93a7' }}>${claim.total_billed.toLocaleString()}</div>
                 )}
               </div>
             ))}
           </div>
         </div>
       )}
-      
+
       {/* Graph Area */}
       <div className="flex-1 flex items-center justify-center">
-        <svg viewBox="0 0 600 380" className="w-full h-full max-w-[600px]">
+        <svg viewBox="0 0 600 380" className="w-full h-full max-w-[640px]">
           <defs>
-            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-              <polygon points="0 0, 10 3.5, 0 7" fill="#475569" />
+            {/* Neutral idle arrowhead */}
+            <marker id="ag-arrow-idle" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+              <polygon points="0 0, 9 3.5, 0 7" fill={IDLE_EDGE} />
             </marker>
-            <marker id="arrowhead-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-              <polygon points="0 0, 10 3.5, 0 7" fill="#a855f7" />
-            </marker>
-            <marker id="arrowhead-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-              <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6" />
-            </marker>
-            <marker id="arrowhead-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-              <polygon points="0 0, 10 3.5, 0 7" fill="#22c55e" />
-          </marker>
-          <marker id="arrowhead-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b" />
-          </marker>
-          {/* Glow filters */}
-          {Object.entries(ACTIVE_GLOW).map(([id, color]) => (
-            <filter key={id} id={`glow-${id}`} x="-50%" y="-50%" width="200%" height="200%">
-              <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor={color} floodOpacity="0.6" />
-            </filter>
-          ))}
-          {/* Edge glow filters */}
-          <filter id="edge-glow-purple" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#a855f7" floodOpacity="0.8" />
-          </filter>
-          <filter id="edge-glow-blue" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#3b82f6" floodOpacity="0.8" />
-          </filter>
-          <filter id="edge-glow-green" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#22c55e" floodOpacity="0.8" />
-          </filter>
-          <filter id="edge-glow-amber" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#f59e0b" floodOpacity="0.8" />
-          </filter>
-        </defs>
+            {/* Accent arrowheads, glow filters */}
+            {Object.entries(ACCENT).map(([role, color]) => (
+              <g key={role}>
+                <marker id={`ag-arrow-${role}`} markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+                  <polygon points="0 0, 9 3.5, 0 7" fill={color} />
+                </marker>
+                <filter id={`ag-glow-${role}`} x="-60%" y="-60%" width="220%" height="220%">
+                  <feDropShadow dx="0" dy="0" stdDeviation="7" floodColor={color} floodOpacity="0.7" />
+                </filter>
+                <filter id={`ag-edge-glow-${role}`} x="-50%" y="-50%" width="200%" height="200%">
+                  <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor={color} floodOpacity="0.85" />
+                </filter>
+              </g>
+            ))}
+          </defs>
 
-        {/* Edges */}
-        {EDGES.map((edge, i) => {
-          const key = `${edge.from}->${edge.to}`
-          const isActive = activeEdge === key
-          const path = edgePath(edge.from, edge.to)
-          const edgeColor = getEdgeColor(edge.from, isActive)
-          
-          // Determine arrow marker and glow based on source
-          let arrowMarker = 'url(#arrowhead)'
-          let glowFilter = undefined
-          if (isActive) {
-            if (edge.from === 'start' || edge.from === 'analysis') {
-              arrowMarker = 'url(#arrowhead-purple)'
-              glowFilter = 'url(#edge-glow-purple)'
-            } else if (edge.from === 'investigation') {
-              arrowMarker = 'url(#arrowhead-green)'
-              glowFilter = 'url(#edge-glow-green)'
-            } else if (edge.from === 'dossier') {
-              arrowMarker = 'url(#arrowhead-amber)'
-              glowFilter = 'url(#edge-glow-amber)'
-            } else {
-              arrowMarker = 'url(#arrowhead-blue)'
-              glowFilter = 'url(#edge-glow-blue)'
-            }
-          }
+          {/* Edges */}
+          {EDGES.map((edge) => {
+            const key      = `${edge.from}->${edge.to}`
+            const isActive = activeEdge === key
+            const path     = calcEdgePath(edge.from, edge.to)
+            const role     = NODE_ROLE[edge.from] || 'neutral'
+            const accent   = ACCENT[role]
 
-          return (
-            <g key={i}>
-              <path
-                d={path}
-                fill="none"
-                stroke={edgeColor}
-                strokeWidth={isActive ? 2.5 : 1.5}
-                className={isActive ? 'edge-active' : ''}
-                markerEnd={arrowMarker}
-                filter={isActive ? glowFilter : undefined}
-                opacity={isActive ? 1 : 0.55}
-              />
-              {/* Edge label */}
-              {edge.label && (() => {
-                const a = getNodePos(edge.from)
-                const b = getNodePos(edge.to)
-                let lx = (a.x + b.x) / 2
-                let ly = (a.y + b.y) / 2
-                
-                // Adjust label position for curved paths
-                if (b.y < a.y) {
-                  // Return paths - offset label outward
-                  lx += (b.x > a.x ? -35 : 35)
-                } else if (edge.from === 'orchestrator' && (edge.to === 'investigation' || edge.to === 'dossier')) {
-                  // Diagonal paths
-                  ly -= 10
-                }
-                
-                return (
-                  <text
-                    x={lx}
-                    y={ly}
-                    textAnchor="middle"
-                    fill={isActive ? edgeColor : '#94a3b8'}
-                    fontSize="9"
-                    fontWeight={isActive ? '600' : '400'}
-                  >
-                    {edge.label}
-                  </text>
-                )
-              })()}
-            </g>
-          )
-        })}
-
-        {/* Nodes */}
-        {NODES.map((node) => {
-          const colors = NODE_COLORS[node.id]
-          const isActive = activeNode === node.id
-          const isVisited = visitedSet.has(node.id)
-          const isTerminal = node.type === 'terminal'
-          const dims = getNodeDimensions(node.id)
-          const w = dims.w
-          const h = dims.h
-          const rx = isTerminal ? 15 : 10
-
-          return (
-            <g key={node.id}>
-              {/* Active glow pulse */}
-              {isActive && ACTIVE_GLOW[node.id] && (
-                <rect
-                  x={node.x - w / 2 - 4}
-                  y={node.y - h / 2 - 4}
-                  width={w + 8}
-                  height={h + 8}
-                  rx={rx + 4}
-                  fill="none"
-                  stroke={ACTIVE_GLOW[node.id]}
-                  strokeWidth="2"
-                  opacity="0.3"
-                  className="node-pulse"
-                />
-              )}
-
-              {/* Node body */}
-              <rect
-                x={node.x - w / 2}
-                y={node.y - h / 2}
-                width={w}
-                height={h}
-                rx={rx}
-                fill={colors.bg}
-                stroke={isActive ? ACTIVE_GLOW[node.id] || colors.border : isVisited ? colors.border : '#e2e8f0'}
-                strokeWidth={isActive ? 2.5 : 1.5}
-                filter={isActive && ACTIVE_GLOW[node.id] ? `url(#glow-${node.id})` : undefined}
-                opacity={isActive ? 1 : isVisited ? 0.9 : 0.6}
-              />
-
-              {/* Node label */}
-              <text
-                x={node.x}
-                y={node.y + (isTerminal ? 1 : -3)}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fill={isActive ? colors.bg : colors.text}
-                fontSize={isTerminal ? '10' : '12'}
-                fontWeight="600"
-              >
-                {node.label}
-              </text>
-
-              {/* Sub-label */}
-              {!isTerminal && node.desc && (
-                <text
-                  x={node.x}
-                  y={node.y + 13}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill={isActive ? colors.text : '#4a5568'}
-                  fontSize="8"
-                >
-                  {node.desc}
+            // Label positioning
+            const labelEl = edge.label ? (() => {
+              const a  = getNodePos(edge.from)
+              const b  = getNodePos(edge.to)
+              let lx   = (a.x + b.x) / 2
+              let ly   = (a.y + b.y) / 2
+              if (b.y < a.y) lx += (b.x > a.x ? -35 : 35)
+              else if (edge.from === 'orchestrator' && (edge.to === 'investigation' || edge.to === 'dossier')) ly -= 10
+              return (
+                <text x={lx} y={ly} textAnchor="middle"
+                  fill={isActive ? accent : '#5b6478'}
+                  fontSize="9" fontWeight={isActive ? '600' : '400'}
+                  opacity={isActive ? 1 : 0.6}
+                  style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                  {edge.label}
                 </text>
-              )}
+              )
+            })() : null
 
-              {/* Visited checkmark */}
-              {isVisited && !isActive && !isTerminal && (
-                <circle
-                  cx={node.x + w / 2 - 6}
-                  cy={node.y - h / 2 + 6}
-                  r="6"
-                  fill="#22c55e"
-                >
-                </circle>
-              )}
-            </g>
-          )
-        })}
+            return (
+              <g key={key}>
+                {/* Base edge */}
+                <path d={path} fill="none"
+                  stroke={isActive ? accent : IDLE_EDGE}
+                  strokeWidth={isActive ? 2.5 : 1.4}
+                  markerEnd={isActive ? `url(#ag-arrow-${role})` : 'url(#ag-arrow-idle)'}
+                  opacity={isActive ? 1 : 0.5}
+                />
+                {/* Flowing dashed overlay on active edge */}
+                {isActive && (
+                  <path d={path} fill="none" stroke={accent} strokeWidth={2.5}
+                    strokeLinecap="round" className="console-edge-active"
+                    filter={`url(#ag-edge-glow-${role})`} opacity={0.95}
+                  />
+                )}
+                {/* Travelling particle */}
+                {isActive && (
+                  <circle r="3" fill="#ffffff" opacity="0.9">
+                    <animateMotion dur="0.7s" repeatCount="indefinite" path={path} />
+                  </circle>
+                )}
+                {labelEl}
+              </g>
+            )
+          })}
+
+          {/* Nodes */}
+          {renderableNodes.map((node) => {
+            const isActive   = activeNode === node.id
+            const isVisited  = visitedSet.has(node.id)
+            const isTerminal = node.type === 'terminal'
+            const role    = NODE_ROLE[node.id] || 'neutral'
+            const accent  = ACCENT[role]
+            const surface = nodeSurface(node.id)
+            const { w, h } = getNodeDimensions(node.id)
+            const rx = isTerminal ? 15 : 12
+
+            const nodeOpacity = isActive ? 1 : isVisited ? 0.85 : DIM_OPACITY
+            const labelFill   = isActive ? '#ffffff' : isVisited ? '#dfe3ec' : '#aeb6c7'
+
+            return (
+              <g key={node.id} style={{ opacity: nodeOpacity, transition: 'opacity 0.3s ease' }}>
+                {/* Breathing halo */}
+                {isActive && (
+                  <rect x={node.x - w / 2 - 5} y={node.y - h / 2 - 5}
+                    width={w + 10} height={h + 10} rx={rx + 5}
+                    fill="none" stroke={accent} strokeWidth="2"
+                    className="console-node-halo"
+                  />
+                )}
+
+                {/* Node body */}
+                <g className={isActive ? 'console-node-active' : undefined}>
+                  <rect x={node.x - w / 2} y={node.y - h / 2} width={w} height={h} rx={rx}
+                    fill={surface}
+                    stroke={isActive || isVisited ? accent : '#2b3346'}
+                    strokeWidth={isActive ? 2.25 : 1.4}
+                    filter={isActive ? `url(#ag-glow-${role})` : undefined}
+                  />
+                  <text x={node.x} y={node.y + (isTerminal ? 1 : -4)}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fill={labelFill}
+                    fontSize={isTerminal ? '10' : '12.5'} fontWeight="600"
+                    style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                    {node.label}
+                  </text>
+                  {!isTerminal && node.desc && (
+                    <text x={node.x} y={node.y + 13}
+                      textAnchor="middle" dominantBaseline="middle"
+                      fill={isActive ? accent : '#7f879b'} fontSize="8.5"
+                      style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                      {node.desc}
+                    </text>
+                  )}
+                </g>
+
+                {/* Loop/timer progress ring */}
+                {isActive && !isTerminal && isRunning && (
+                  <LoopRing cx={node.x + w / 2 - 4} cy={node.y - h / 2 + 4}
+                    accent={accent} loopCount={loopCount} elapsed={elapsed} />
+                )}
+
+                {/* Visited checkmark */}
+                {isVisited && !isActive && !isTerminal && (
+                  <g>
+                    <circle cx={node.x + w / 2 - 8} cy={node.y - h / 2 + 8} r="7" fill={ACCENT.green} />
+                    <path
+                      d={`M ${node.x + w / 2 - 11} ${node.y - h / 2 + 8} l 2 2 l 4 -4`}
+                      fill="none" stroke="#0b1019" strokeWidth="1.6"
+                      strokeLinecap="round" strokeLinejoin="round"
+                    />
+                  </g>
+                )}
+              </g>
+            )
+          })}
         </svg>
       </div>
     </div>
+  )
+}
+
+/**
+ * Thin circular progress ring rendered around the active node.
+ * Fills over the loop duration so "Loop 3 * 18s" has a visceral feel.
+ */
+function LoopRing({ cx, cy, accent, loopCount, elapsed }) {
+  const r    = 11
+  const circ = 2 * Math.PI * r
+  const LOOP_SECONDS = 24
+  const dash = circ * ((elapsed % LOOP_SECONDS) / LOOP_SECONDS)
+
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={r} fill="#0b1019" stroke="rgba(255,255,255,0.12)" strokeWidth="2.5" />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={accent} strokeWidth="2.5"
+        strokeLinecap="round" strokeDasharray={`${dash} ${circ}`}
+        transform={`rotate(-90 ${cx} ${cy})`}
+        style={{ transition: 'stroke-dasharray 0.9s linear' }}
+      />
+      <text x={cx} y={cy + 0.5} textAnchor="middle" dominantBaseline="middle"
+        fill="#ffffff" fontSize="9" fontWeight="700"
+        style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+        {loopCount > 0 ? loopCount : ''}
+      </text>
+    </g>
   )
 }

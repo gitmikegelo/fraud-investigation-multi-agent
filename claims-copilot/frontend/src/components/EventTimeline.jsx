@@ -15,7 +15,7 @@ const EVENT_ICONS = {
 }
 
 const NODE_BADGE_COLORS = {
-  orchestrator: { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
+  orchestrator: { bg: 'var(--c-accent-light)', text: 'var(--c-accent)', border: 'var(--c-accent-mid)' },
   investigation: { bg: 'var(--c-green-bg)', text: 'var(--c-green)', border: 'var(--c-green-border)' },
   dossier: { bg: 'var(--c-amber-bg)', text: 'var(--c-amber)', border: 'var(--c-amber-border)' },
 }
@@ -178,7 +178,7 @@ function EventRow({ event }) {
               style={{
                 background: 'var(--c-accent-light)',
                 color: 'var(--c-accent)',
-                border: '1px solid #c7d2fe',
+                border: 'var(--c-accent-mid)',
                 cursor: 'help',
               }}
               title="Hover for details"
@@ -210,7 +210,7 @@ function EventRow({ event }) {
         {event.phase && (
           <span
             className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide"
-            style={{ background: 'var(--c-accent-light)', color: 'var(--c-accent)', border: '1px solid #c7d2fe' }}
+            style={{ background: 'var(--c-accent-light)', color: 'var(--c-accent)', border: '1px solid var(--c-accent-mid)' }}
           >
             {event.phase}
           </span>

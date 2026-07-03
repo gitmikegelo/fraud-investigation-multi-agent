@@ -39,8 +39,23 @@ const TYPE_CHIPS = {
 export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNavigateToDossier, onStartAutoScan }) {
   const { messages, isThinking, isConnected, checklistState, checklistRunning, sendMessage, runChecklist } = useCopilotChat(caseId)
   const [input, setInput] = useState('')
+  const [checklistPending, setChecklistPending] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+
+  // Clear the local pending flag once the server confirms completion
+  useEffect(() => {
+    if (!checklistRunning && checklistPending) {
+      setChecklistPending(false)
+    }
+  }, [checklistRunning]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRunChecklist = () => {
+    setChecklistPending(true)
+    runChecklist()
+  }
+
+  const showChecklistOverlay = checklistPending || checklistRunning
 
   const chips = [...COMMON_CHIPS, ...(TYPE_CHIPS[caseSummary?.claim_type] || [])]
 
@@ -83,7 +98,7 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
           }}>← Queue</button>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#818cf8', fontFamily: 'ui-monospace, monospace' }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-accent)', fontFamily: 'ui-monospace, monospace' }}>
                 {caseSummary?.case_id || caseId}
               </span>
               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>
@@ -91,7 +106,7 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
               </span>
               <span style={{
                 fontSize: 10, padding: '2px 8px', borderRadius: 10,
-                background: 'rgba(99,102,241,0.12)', color: '#818cf8', fontWeight: 600,
+                background: 'var(--c-accent-soft)', color: 'var(--c-accent)', fontWeight: 600,
               }}>
                 {caseSummary?.claim_type?.replace('_', ' ') || caseType}
               </span>
@@ -119,9 +134,8 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
         {(ruleCount > 0 || taskCount > 0) && (
           <div style={{
             marginTop: 8, padding: '6px 12px', borderRadius: 8,
-            background: ruleCount > 0 ? 'rgba(239,68,68,0.06)' : 'rgba(99,102,241,0.06)',
-            border: `1px solid ${ruleCount > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(99,102,241,0.15)'}`,
-            fontSize: 11, color: 'var(--c-text-dim)', display: 'flex', gap: 16,
+            background: ruleCount > 0 ? 'rgba(239,68,68,0.06)' : 'var(--c-accent-faint)',
+            border: `1px solid ${ruleCount > 0 ? 'rgba(239,68,68,0.15)' : 'var(--c-accent-soft)'}`,            fontSize: 11, color: 'var(--c-text-dim)', display: 'flex', gap: 16,
           }}>
             {ruleCount > 0 && <span>🚩 {ruleCount} rules triggered</span>}
             {taskCount > 0 && <span>📋 {taskCount} workflow tasks</span>}
@@ -155,15 +169,20 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
         {isThinking && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
-            background: 'rgba(99,102,241,0.06)', borderRadius: 12, alignSelf: 'flex-start',
+            background: 'var(--c-accent-faint)', borderRadius: 12, alignSelf: 'flex-start',
           }}>
-            <span className="animate-pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: '#6366f1' }} />
-            <span style={{ fontSize: 12, color: '#818cf8', fontStyle: 'italic' }}>Copilot is thinking…</span>
+            <span className="animate-pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-accent)' }} />
+            <span style={{ fontSize: 12, color: 'var(--c-accent)', fontStyle: 'italic' }}>Copilot is thinking…</span>
           </div>
         )}
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Checklist loading overlay */}
+      {showChecklistOverlay && (
+        <ChecklistLoadingOverlay steps={checklistState?.steps} />
+      )}
 
       {/* Quick action chips */}
       <div style={{
@@ -172,13 +191,13 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
         display: 'flex', gap: 6, flexWrap: 'wrap',
       }}>
         {chips.map(c => (
-          <button key={c.label} onClick={() => c.action === 'checklist' ? runChecklist() : sendMessage(c.prompt)} disabled={isThinking || checklistRunning} style={{
+          <button key={c.label} onClick={() => c.action === 'checklist' ? handleRunChecklist() : sendMessage(c.prompt)} disabled={isThinking || checklistRunning || checklistPending} style={{
             fontSize: 11, padding: '4px 12px', borderRadius: 14,
             border: '1px solid var(--c-border)', background: 'transparent',
-            color: 'var(--c-text-dim)', cursor: (isThinking || checklistRunning) ? 'not-allowed' : 'pointer',
-            opacity: (isThinking || checklistRunning) ? 0.5 : 1, transition: 'all 0.12s',
+            color: 'var(--c-text-dim)', cursor: (isThinking || checklistRunning || checklistPending) ? 'not-allowed' : 'pointer',
+            opacity: (isThinking || checklistRunning || checklistPending) ? 0.5 : 1, transition: 'all 0.12s',
           }}
-          onMouseEnter={e => { if (!isThinking && !checklistRunning) e.currentTarget.style.borderColor = '#6366f1' }}
+          onMouseEnter={e => { if (!isThinking && !checklistRunning && !checklistPending) e.currentTarget.style.borderColor = 'var(--c-accent)' }}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--c-border)'}
           >
             {c.label}
@@ -206,13 +225,13 @@ export default function ChatPanel({ caseId, caseType, caseSummary, onBack, onNav
             outline: 'none', fontFamily: 'inherit', lineHeight: 1.4,
             minHeight: 40, maxHeight: 120,
           }}
-          onFocus={e => e.target.style.borderColor = '#6366f1'}
+          onFocus={e => e.target.style.borderColor = 'var(--c-accent)'}
           onBlur={e => e.target.style.borderColor = 'var(--c-border)'}
         />
         <button onClick={handleSend} disabled={isThinking || !input.trim()} style={{
           padding: '10px 20px', borderRadius: 10, border: 'none',
-          background: (isThinking || !input.trim()) ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.85)',
-          color: (isThinking || !input.trim()) ? '#6366f1' : '#fff',
+          background: (isThinking || !input.trim()) ? 'var(--c-accent-light)' : 'var(--c-accent)',
+          color: (isThinking || !input.trim()) ? 'var(--c-accent)' : '#fff',
           fontSize: 13, fontWeight: 600, cursor: (isThinking || !input.trim()) ? 'not-allowed' : 'pointer',
           transition: 'all 0.15s', flexShrink: 0,
         }}>
@@ -242,8 +261,8 @@ function MessageBubble({ msg, onNavigateToDossier }) {
     return (
       <div style={{ alignSelf: 'flex-start', maxWidth: '80%' }}>
         <button onClick={() => setToolOpen(!toolOpen)} style={{
-          fontSize: 11, color: '#818cf8', background: 'rgba(99,102,241,0.06)',
-          border: '1px solid rgba(99,102,241,0.15)', borderRadius: 8,
+        fontSize: 11, color: 'var(--c-accent)', background: 'var(--c-accent-faint)',
+          border: '1px solid var(--c-accent-soft)', borderRadius: 8,
           padding: '5px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
         }}>
           <span style={{ fontSize: 10 }}>🔧</span>
@@ -252,7 +271,7 @@ function MessageBubble({ msg, onNavigateToDossier }) {
         </button>
         {toolOpen && (
           <div style={{
-            marginTop: 4, padding: '8px 12px', background: 'rgba(99,102,241,0.04)',
+            marginTop: 4, padding: '8px 12px', background: 'var(--c-accent-faint)',
             borderRadius: 8, fontSize: 11, color: 'var(--c-text-dim)',
             fontFamily: 'ui-monospace, monospace', whiteSpace: 'pre-wrap',
           }}>
@@ -274,15 +293,15 @@ function MessageBubble({ msg, onNavigateToDossier }) {
     <div style={{ alignSelf: isAnalyst ? 'flex-end' : 'flex-start', maxWidth: '80%' }}>
       <div style={{
         fontSize: 10, fontWeight: 600, marginBottom: 3,
-        color: isAnalyst ? '#818cf8' : '#64748b',
+        color: isAnalyst ? 'var(--c-accent)' : '#64748b',
         textAlign: isAnalyst ? 'right' : 'left',
       }}>
         {isAnalyst ? 'You' : 'Copilot'}
       </div>
       <div style={{
         padding: '10px 14px', borderRadius: 12,
-        background: isAnalyst ? 'rgba(99,102,241,0.12)' : 'var(--c-surface2)',
-        border: isAnalyst ? '1px solid rgba(99,102,241,0.2)' : '1px solid var(--c-border)',
+        background: isAnalyst ? 'var(--c-accent-soft)' : 'var(--c-surface2)',
+        border: isAnalyst ? '1px solid var(--c-accent-light)' : '1px solid var(--c-border)',
         color: 'var(--c-text)', fontSize: 13, lineHeight: 1.55,
       }}>
         {isAnalyst ? (
@@ -299,12 +318,12 @@ function MessageBubble({ msg, onNavigateToDossier }) {
           style={{
             marginTop: 8, display: 'flex', alignItems: 'center', gap: 6,
             fontSize: 12, fontWeight: 600, padding: '7px 16px', borderRadius: 8,
-            background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)',
-            color: '#818cf8', cursor: 'pointer', transition: 'all 0.15s', width: '100%',
+            background: 'var(--c-accent-soft)', border: '1px solid var(--c-accent-light)',
+            color: 'var(--c-accent)', cursor: 'pointer', transition: 'all 0.15s', width: '100%',
             justifyContent: 'center',
           }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.22)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.12)' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--c-accent-light)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--c-accent-soft)' }}
         >
           <svg width="13" height="13" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 2a1.5 1.5 0 011.5-1.5H10L13 4v8.5A1.5 1.5 0 0111.5 14h-7A1.5 1.5 0 013 12.5V2z"/>
@@ -322,7 +341,7 @@ const STATUS_CONFIG = {
   pass:         { icon: '✓', color: '#22c55e', bg: 'rgba(34,197,94,0.10)',  border: 'rgba(34,197,94,0.25)',  label: 'Passed' },
   fail:         { icon: '✕', color: '#ef4444', bg: 'rgba(239,68,68,0.10)',  border: 'rgba(239,68,68,0.25)',  label: 'Failed' },
   needs_review: { icon: '!', color: '#f59e0b', bg: 'rgba(245,158,11,0.10)', border: 'rgba(245,158,11,0.25)', label: 'Review' },
-  running:      { icon: '◌', color: '#818cf8', bg: 'rgba(99,102,241,0.10)', border: 'rgba(99,102,241,0.25)', label: 'Running' },
+  running:      { icon: '◌', color: 'var(--c-accent)', bg: 'var(--c-accent-soft)', border: 'var(--c-accent-mid)', label: 'Running' },
   pending:      { icon: '○', color: '#64748b', bg: 'rgba(100,116,139,0.06)',border: 'rgba(100,116,139,0.12)',label: 'Pending' },
   error:        { icon: '⚠', color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)',   label: 'Error' },
 }
@@ -353,14 +372,14 @@ function ChecklistCard({ msg, onStartAutoScan }) {
         {/* Card header */}
         <div style={{
           padding: '14px 18px 12px',
-          background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(59,130,246,0.06) 100%)',
+          background: 'linear-gradient(135deg, var(--c-accent-faint) 0%, var(--c-blue-soft) 100%)',
           borderBottom: '1px solid var(--c-border)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{
               width: 28, height: 28, borderRadius: 8,
-              background: 'rgba(99,102,241,0.15)',
+              background: 'var(--c-accent-soft)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 14,
             }}>
@@ -411,9 +430,9 @@ function ChecklistCard({ msg, onStartAutoScan }) {
                     padding: '10px 18px',
                     cursor: hasFindings && isDone ? 'pointer' : 'default',
                     transition: 'background 0.15s',
-                    background: isExpanded ? 'rgba(99,102,241,0.04)' : 'transparent',
+                    background: isExpanded ? 'var(--c-accent-faint)' : 'transparent',
                   }}
-                  onMouseEnter={e => { if (hasFindings && isDone) e.currentTarget.style.background = 'rgba(99,102,241,0.04)' }}
+                  onMouseEnter={e => { if (hasFindings && isDone) e.currentTarget.style.background = 'var(--c-accent-faint)' }}
                   onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent' }}
                 >
                   {/* Status icon */}
@@ -476,7 +495,7 @@ function ChecklistCard({ msg, onStartAutoScan }) {
                 {isExpanded && hasFindings && (
                   <div style={{
                     margin: '0 18px 8px 56px', padding: '8px 12px',
-                    background: 'rgba(99,102,241,0.03)',
+                    background: 'var(--c-accent-faint)',
                     borderRadius: 8, borderLeft: `2px solid ${cfg.color}`,
                   }}>
                     {step.findings.map((f, fi) => (
@@ -523,7 +542,7 @@ function ChecklistCard({ msg, onStartAutoScan }) {
           <div style={{
             padding: '12px 18px',
             borderTop: '1px solid var(--c-border)',
-            background: 'linear-gradient(135deg, rgba(99,102,241,0.04) 0%, transparent 100%)',
+            background: 'linear-gradient(135deg, var(--c-accent-faint) 0%, transparent 100%)',
             display: 'flex', gap: 16, alignItems: 'center',
           }}>
             {summary.passed > 0 && (
@@ -555,13 +574,13 @@ function ChecklistCard({ msg, onStartAutoScan }) {
               style={{
                 width: '100%', padding: '10px 16px', borderRadius: 10,
                 border: 'none', cursor: 'pointer',
-                background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+                background: 'linear-gradient(135deg, #a100ff, #d6298a)',
                 color: '#fff', fontSize: 13, fontWeight: 700,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(99,102,241,0.3)',
+                transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(161,0,255,0.3)',
               }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.4)' }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(99,102,241,0.3)' }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(161,0,255,0.4)' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(161,0,255,0.3)' }}
             >
               <svg width="14" height="14" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M1 4V1.5A.5.5 0 011.5 1H4"/><path d="M11 1h2.5a.5.5 0 01.5.5V4"/>
@@ -637,6 +656,184 @@ function ChecklistCard({ msg, onStartAutoScan }) {
         @keyframes pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.6; transform: scale(0.92); }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+
+const CHECKLIST_QUIPS = [
+  { icon: '🔍', text: 'Verifying all required fields are present and accounted for…' },
+  { icon: '🧠', text: 'Cross-referencing member eligibility against the policy database…' },
+  { icon: '📄', text: 'Reviewing medical documentation for completeness…' },
+  { icon: '🔬', text: 'Running fraud screening models. The algorithms are deliberating.' },
+  { icon: '📊', text: 'Analysing claim history patterns. Every data point tells a story.' },
+  { icon: '🏥', text: 'Verifying provider credentials and billing codes…' },
+  { icon: '👨‍👩‍👧‍👦', text: 'Checking dependent enrollment anomalies…' },
+  { icon: '📅', text: 'Confirming coverage dates align with the date of service.' },
+  { icon: '🧩', text: 'Running network analysis across related claims…' },
+  { icon: '🤖', text: 'AI is working very hard. Please offer it encouragement.' },
+  { icon: '⚖️', text: 'Weighing the evidence. The scale tips slightly toward paperwork.' },
+  { icon: '📋', text: 'Running the 7-step checklist with the rigor of a seasoned examiner.' },
+  { icon: '🔒', text: 'Checking policy limits and benefit schedules…' },
+  { icon: '📡', text: 'Pinging the rules engine. The rules engine is judging the claim.' },
+  { icon: '🔦', text: 'Shining a light into every corner of this submission…' },
+]
+
+function ChecklistLoadingOverlay({ steps }) {
+  const [quipIndex, setQuipIndex] = useState(0)
+  const [fade, setFade] = useState(true)
+  const [dots, setDots] = useState(0)
+
+  const completedCount = steps ? steps.filter(s => !['pending', 'running'].includes(s.status)).length : 0
+  const totalSteps     = steps ? steps.length : 7
+  const pct            = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0
+  const runningStep    = steps ? steps.find(s => s.status === 'running') : null
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFade(false)
+      setTimeout(() => { setQuipIndex(i => (i + 1) % CHECKLIST_QUIPS.length); setFade(true) }, 300)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    const interval = setInterval(() => setDots(d => (d + 1) % 4), 400)
+    return () => clearInterval(interval)
+  }, [])
+
+  const quip = CHECKLIST_QUIPS[quipIndex]
+  const circumference = 2 * Math.PI * 36
+  const strokeDash    = circumference - (pct / 100) * circumference
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(10,10,20,0.72)', backdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 800,
+    }}>
+      <div style={{
+        background: 'var(--c-surface)',
+        border: '1px solid var(--c-border)',
+        borderRadius: 20,
+        padding: '36px 44px',
+        maxWidth: 440,
+        width: '90vw',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 24,
+        boxShadow: '0 32px 80px rgba(0,0,0,0.45), 0 0 0 1px rgba(161,0,255,0.08)',
+      }}>
+
+        {/* Circular progress ring */}
+        <div style={{ position: 'relative', width: 96, height: 96 }}>
+          <svg width="96" height="96" viewBox="0 0 96 96" style={{ transform: 'rotate(-90deg)' }}>
+            <circle cx="48" cy="48" r="36" fill="none" stroke="var(--c-border)" strokeWidth="5" />
+            <circle
+              cx="48" cy="48" r="36" fill="none"
+              stroke="url(#clGrad)"
+              strokeWidth="5"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDash}
+              style={{ transition: 'stroke-dashoffset 0.6s cubic-bezier(0.4,0,0.2,1)' }}
+            />
+            <defs>
+              <linearGradient id="clGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#a100ff" />
+                <stop offset="100%" stopColor="#2962ff" />
+              </linearGradient>
+            </defs>
+          </svg>
+          {/* Centre text */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexDirection: 'column', gap: 2,
+          }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--c-text)', letterSpacing: '-0.5px' }}>
+              {pct}%
+            </span>
+            <span style={{ fontSize: 9, color: 'var(--c-text-dim)', fontWeight: 600 }}>
+              {completedCount}/{totalSteps}
+            </span>
+          </div>
+        </div>
+
+        {/* Title */}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '-0.2px' }}>
+            Running 7-Step Examiner Checklist
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--c-text-dim)', marginTop: 4 }}>
+            {runningStep
+              ? <>Analysing: <span style={{ color: 'var(--c-accent)', fontWeight: 600 }}>{runningStep.step_name}</span></>
+              : 'Preparing examination…'}
+            {'.'.repeat(dots)}
+          </div>
+        </div>
+
+        {/* Step pills */}
+        {steps && (
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 340 }}>
+            {steps.map((s, i) => {
+              const isRunning = s.status === 'running'
+              const isDone    = !['pending', 'running'].includes(s.status)
+              const color = s.status === 'pass'         ? '#22c55e'
+                          : s.status === 'fail'         ? '#ef4444'
+                          : s.status === 'needs_review' ? '#f59e0b'
+                          : isRunning                   ? '#a100ff'
+                          : 'var(--c-border)'
+              return (
+                <div key={i} title={s.step_name} style={{
+                  height: 6, width: isDone || isRunning ? 28 : 18,
+                  borderRadius: 3,
+                  background: color,
+                  opacity: s.status === 'pending' ? 0.25 : 1,
+                  transition: 'all 0.4s cubic-bezier(0.4,0,0.2,1)',
+                  animation: isRunning ? 'clPulse 1.2s ease-in-out infinite' : 'none',
+                }} />
+              )
+            })}
+          </div>
+        )}
+
+        {/* Rotating quip */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(161,0,255,0.06) 0%, rgba(41,98,255,0.05) 100%)',
+          border: '1px solid var(--c-border)',
+          borderRadius: 12,
+          padding: '14px 18px',
+          width: '100%',
+          minHeight: 60,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          transition: 'opacity 0.3s ease',
+          opacity: fade ? 1 : 0,
+        }}>
+          <span style={{ fontSize: 22, flexShrink: 0 }}>{quip.icon}</span>
+          <span style={{ fontSize: 12, color: 'var(--c-text-dim)', lineHeight: 1.5, fontStyle: 'italic' }}>
+            {quip.text}
+          </span>
+        </div>
+
+        <div style={{ fontSize: 10, color: 'var(--c-text-dim)', opacity: 0.5, letterSpacing: '0.5px' }}>
+          YOUR CLAIM IS IN GOOD HANDS
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes clPulse {
+          0%, 100% { opacity: 1; transform: scaleX(1); }
+          50%       { opacity: 0.5; transform: scaleX(0.85); }
         }
       `}</style>
     </div>

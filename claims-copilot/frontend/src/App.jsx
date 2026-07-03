@@ -53,7 +53,7 @@ export default function App() {
   const checklistContextRef = useRef(null)
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--c-bg)' }}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'transparent' }}>
 
       {/* ── Sidebar ───────────────────────────────────────────────────── */}
       <aside style={{
@@ -67,18 +67,23 @@ export default function App() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
             <div style={{
               width: 32, height: 32, borderRadius: 9,
-              background: 'rgba(99,102,241,0.18)',
+              background: 'var(--c-accent-light)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M2 10L5.5 5L8.5 8.5L11.5 3L14 6" stroke="#818cf8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="2.5" cy="13" r="1.5" fill="#4f46e5"/>
-                <circle cx="13.5" cy="13" r="1.5" fill="#818cf8"/>
+                <path d="M2 10L5.5 5L8.5 8.5L11.5 3L14 6" stroke="var(--c-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="2.5" cy="13" r="1.5" fill="var(--c-accent)"/>
+                <circle cx="13.5" cy="13" r="1.5" fill="var(--c-accent-mid)"/>
               </svg>
             </div>
             <div>
-              <div style={{ color: '#f1f5f9', fontWeight: 700, fontSize: 15, letterSpacing: '-0.01em', lineHeight: 1.2 }}>Claims Co-Pilot</div>
-              <div style={{ color: '#475569', fontSize: 10, marginTop: 1 }}>Prudential</div>
+              <div style={{
+                fontWeight: 700, fontSize: 15, letterSpacing: '-0.01em', lineHeight: 1.2,
+                background: 'linear-gradient(90deg, #a100ff, #d6298a)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+              }}>Claims Co-Pilot</div>
+              <div style={{ color: 'var(--c-text-muted)', fontSize: 10, marginTop: 1 }}>Prudential</div>
             </div>
           </div>
           <div style={{ height: 1, background: 'var(--c-sidebar-border)' }} />
@@ -86,7 +91,7 @@ export default function App() {
 
         {/* Nav */}
         <nav style={{ padding: '12px 10px', flex: 1 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#334155', padding: '0 8px', marginBottom: 6 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--c-text-muted)', padding: '0 8px', marginBottom: 6 }}>
             Views
           </div>
           {NAV.map(({ id, label, Icon }) => {
@@ -97,17 +102,17 @@ export default function App() {
                 onClick={() => setActiveView(id)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 9,
-                  width: '100%', padding: '7px 10px', borderRadius: 7,
+                  width: '100%', padding: '7px 10px', borderRadius: 8,
                   border: 'none', cursor: 'pointer', marginBottom: 2,
                   background: active ? 'var(--c-sidebar-active)' : 'transparent',
-                  color: active ? '#c7d2fe' : 'var(--c-sidebar-text)',
-                  fontSize: 13, fontWeight: active ? 500 : 400,
+                  color: active ? 'var(--c-accent)' : 'var(--c-sidebar-text)',
+                  fontSize: 13, fontWeight: active ? 600 : 400,
                   transition: 'background 0.12s, color 0.12s', textAlign: 'left',
                 }}
                 onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--c-sidebar-hover)' }}
                 onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
               >
-                <span style={{ opacity: active ? 1 : 0.55, flexShrink: 0 }}><Icon /></span>
+                <span style={{ opacity: active ? 1 : 0.5, flexShrink: 0 }}><Icon /></span>
                 {label}
               </button>
             )
@@ -119,17 +124,17 @@ export default function App() {
           <div style={{ padding: '0 14px 16px' }}>
             <div style={{ height: 1, background: 'var(--c-sidebar-border)', marginBottom: 14 }} />
             <div style={{
-              background: 'rgba(255,255,255,0.04)',
+              background: 'var(--c-accent-faint)',
               border: '1px solid var(--c-sidebar-border)',
-              borderRadius: 9, padding: '10px 12px',
+              borderRadius: 12, padding: '10px 12px',
             }}>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#64748b', marginBottom: 6 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--c-text-muted)', marginBottom: 6 }}>
                 Active Claim
               </div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#818cf8', fontFamily: 'ui-monospace, monospace', marginBottom: 4 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-accent)', fontFamily: 'ui-monospace, monospace', marginBottom: 4 }}>
                 {selectedCase.case_id}
               </div>
-              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 2 }}>
+              <div style={{ fontSize: 12, color: 'var(--c-text-dim)', marginBottom: 2 }}>
                 {selectedCase.subject_name}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
@@ -137,7 +142,7 @@ export default function App() {
                   width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
                   background: selectedCase.priority === 'HIGH' ? '#ef4444' : selectedCase.priority === 'MEDIUM' ? '#f59e0b' : '#6b7280',
                 }} />
-                <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--c-text-dim)' }}>
                   {selectedCase.priority} ({selectedCase.risk_score})
                 </span>
               </div>

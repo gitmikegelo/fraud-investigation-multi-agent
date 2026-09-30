@@ -1,0 +1,130 @@
+Orchestrator
+--- Iteration 1 | Current phase: start ---
+Orchestrator
+Calling LLM for routing decision...
+Orchestrator
+LLM responded in 1.2s
+Orchestrator
+Phase transition: start -> investigate
+Investigation
+Starting investigation sub-agent (7 tools available)...
+Investigation
+Invoking LLM + tool loop...
+tool
+tool:scan_suspicious_entities -> Scanning case queue (risk > 40)...
+tool
+tool:scan_suspicious_entities -> Found 4 high-risk entities; top: INS-0001 (98.4), INS-0040 (92.7) (0.3s)
+tool
+tool:profile_entity -> Profiling INS-0001 (Matthew Garcia)...
+tool
+tool:profile_entity -> Insured, 6 claims, current claim COL-107 $25.9K collision, vehicle 2018 Ford F-150 (ACV $18,484)
+tool
+tool:get_claim_details -> Fetching claim COL-107...
+tool
+tool:get_claim_details -> collision $25,877.85; shop SHP-007 (watchlisted); rules R-004, R-005, serial-claimer
+tool
+tool:compare_to_peers -> Comparing INS-0001 claim_amount vs insured peers...
+tool
+tool:compare_to_peers -> Value: $25,877.85, ACV: $18,484, ratio: 1.4x (excess $7,393.85)
+Investigation
+Sub-agent finished in 8.2s | Tool calls made: 4
+Investigation
+Summary: COL-107 is an inflated collision estimate (1.4x ACV) from watchlisted shop SHP-007 by serial claimer INS-0001...
+Orchestrator
+--- Iteration 2 | Current phase: investigate ---
+Orchestrator
+Phase transition: investigate -> compile
+Dossier
+Starting dossier sub-agent (5 tools available)...
+Dossier
+Invoking LLM + tool loop (evidence assessment)...
+tool
+tool:assess_evidence -> Assessing 'inflated_estimate' (3 evidence points)...
+tool
+tool:assess_evidence -> INSUFFICIENT (2 passed, 2 failed)
+tool
+tool:assess_evidence -> Missing: document_evidence, regulatory_citation
+Dossier
+Evidence assessed as INSUFFICIENT - looping back to investigation
+Orchestrator
+--- Iteration 3 | Current phase: investigate ---
+Orchestrator
+Evidence INSUFFICIENT - looping back to investigation
+Orchestrator
+Phase transition: investigate -> investigate
+Investigation
+Starting investigation sub-agent (addressing evidence gaps)...
+Investigation
+Evidence gaps: need estimate forensics on the COL-107 repair estimate
+tool
+tool:get_claim_details -> Reviewing COL-107 DECREE line-items vs submitted estimate...
+tool
+tool:get_claim_details -> DECREE estimate $8,950-$12,550 (midpoint $10,750, 88%); submitted $25,877.85 = 2.4x
+tool
+tool:get_claim_details -> Line-items include panels/operations inconsistent with documented front-end damage
+tool
+tool:get_shop_history -> Pulling SHP-007 (Discount Fender Fix) estimate history (24 months)...
+tool
+tool:get_shop_history -> SHP-007 watchlisted; concentration of high-value estimates above comparable repairs
+tool
+tool:find_ring -> Checking for repair-shop ring around SHP-007 (risk >= 50)...
+tool
+tool:find_ring -> SHP-007 linked to multiple high-value claims — potential ring
+Investigation
+Sub-agent finished in 6.8s | Tool calls made: 3
+Orchestrator
+--- Iteration 4 | Current phase: investigate ---
+Orchestrator
+Phase transition: investigate -> compile
+Dossier
+Starting dossier sub-agent...
+tool
+tool:assess_evidence -> Assessing 'inflated_estimate' (6 evidence points)...
+tool
+tool:assess_evidence -> INSUFFICIENT (4 passed, 1 failed)
+tool
+tool:assess_evidence -> Missing: regulatory_citation — need AU rule references
+Dossier
+Evidence INSUFFICIENT — missing regulatory citations
+Orchestrator
+--- Iteration 5 | Current phase: investigate ---
+Orchestrator
+Phase transition: investigate -> investigate
+Investigation
+Gathering regulatory basis for inflated-estimate / repair-shop ring...
+tool
+tool:get_claim_details -> Confirming COL-107 rule triggers and coverage...
+tool
+tool:get_claim_details -> R-004 (watchlist BLOCK), R-005 (amount exceeds ACV), serial-claimer; ACV exceeded by $7,393.85
+Investigation
+Sub-agent finished in 2.5s | Tool calls made: 1
+Orchestrator
+--- Iteration 6 | Current phase: investigate ---
+Orchestrator
+Phase transition: investigate -> compile
+Dossier
+Starting dossier sub-agent...
+tool
+tool:assess_evidence -> Assessing 'inflated_estimate' (8 evidence points)...
+tool
+tool:assess_evidence -> SUFFICIENT (5 passed, 0 failed)
+tool
+tool:search_regulatory_rules -> Searching rules for collision...
+tool
+tool:search_regulatory_rules -> Found 3 applicable rules: AU-003, AU-002, AU-005
+tool
+tool:find_similar_cases -> Looking up precedents for inflated_estimate...
+tool
+tool:find_similar_cases -> Found 2 precedent cases
+tool
+tool:estimate_recovery -> Inflated estimate: $25.9K claimed, $10.75K substantiated...
+tool
+tool:estimate_recovery -> Over-estimate exposure $15,128; net prevention $9,225
+tool
+tool:compile_dossier -> Generating auto-insurance fraud dossier...
+tool
+tool:compile_dossier -> Dossier generated (3,240 chars)
+Dossier
+Evidence assessed as SUFFICIENT
+Orchestrator
+Phase transition: compile -> done

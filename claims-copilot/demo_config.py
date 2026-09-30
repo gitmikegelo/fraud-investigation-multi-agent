@@ -14,4 +14,4 @@ import os
 
 def is_demo_mode() -> bool:
     """Check if the application is running in demo mode."""
-    return os.getenv("DEMO_MODE", "").lower() in ("true", "1", "yes")
+    return os.getenv("DEMO_MODE", "").strip().lower() in ("true", "1", "yes")

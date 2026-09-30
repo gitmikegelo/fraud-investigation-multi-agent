@@ -1218,7 +1218,10 @@ async def investigate_websocket(websocket: WebSocket, claim_id: str):
 
     try:
         if is_demo_mode():
-            from demo_runner import run_demo_investigation_sync
+            if DOMAIN_MODE == "car":
+                from demo_runner_car import run_demo_investigation_sync
+            else:
+                from demo_runner import run_demo_investigation_sync
             _patch_loggers(websocket, loop)
             try:
                 demo_dossier = await loop.run_in_executor(

@@ -10,6 +10,7 @@ import re
 import json
 import glob
 import base64
+import hashlib
 import io
 import logging
 from pathlib import Path
@@ -48,35 +49,35 @@ _MEDIA_TYPES = {
 
 # ── Vision prompt ────────────────────────────────────────────────────────────
 
-_TRAVEL_VISION_PROMPT = """\
-You are a travel insurance claims forensics analyst for Zurich Travel Guard.
-You inspect evidence images submitted with travel claims — most commonly photos of
-damaged or lost baggage, but also receipts, police reports, boarding passes, hotel
-invoices, and overseas medical reports. Your job is to assess whether the image is a
-legitimate, authentic piece of supporting evidence or shows signs of fabrication,
-exaggeration, or tampering.
+_MARINE_VISION_PROMPT = """You are a marine cargo claims forensics analyst working for a cargo insurer.
+You inspect evidence submitted with cargo claims — most commonly survey photographs of
+damaged cargo, containers, seals and packaging, but also shipping documents: bills of
+lading, commercial invoices, packing lists, survey reports, Equipment Interchange Receipts
+(EIRs) and delivery receipts. Your job is to assess whether the image is authentic,
+consistent supporting evidence or shows signs of fabrication, reuse, or tampering, and
+whether it shows conditions (e.g. insufficient packing) that matter for coverage under the
+Institute Cargo Clauses.
 
-First decide what KIND of image this is (a real-world photo such as damaged luggage,
-or a document/paperwork scan). Then evaluate it against ALL 13 checks below.
-For EACH check, provide a JSON object with your finding. If a check does not apply to
-this image type (e.g. a font check on a luggage photo), mark it passed=true with a
-short "not applicable for this image type" explanation.
+First decide what KIND of image this is (a survey/damage photograph, or a document scan).
+Then evaluate it against ALL 13 checks below. For EACH check, provide a JSON object with
+your finding. If a check does not apply to this image type (e.g. a font check on a cargo
+photo), mark it passed=true with a short "not applicable for this image type" explanation.
 
 THE 13 EVIDENCE CHECKS:
 
-DOC-001  Digital Manipulation — Are there signs of photo editing: cloning, warped edges, mismatched lighting/shadows, or copy-pasted regions?
-DOC-002  Staged or Inconsistent Damage — For damaged-baggage photos, does the damage look staged or inconsistent (e.g. pristine luxury contents in a "destroyed" bag, damage that doesn't match the claimed cause)?
-DOC-003  Stock or Reused Image — Does this look like a stock photo, a watermarked image, or a picture reused from the internet rather than the claimant's own item?
-DOC-004  Metadata/Capture Inconsistency — Are there visible timestamp, watermark, or screenshot artifacts that conflict with the claimed incident date or location?
-DOC-005  Missing Identifying Detail — For a baggage/property photo, is there NO visible airline tag, luggage tag, room context, or other detail tying the item to the claimant's actual trip?
-DOC-006  Implausible Item Value — Do the visible items look inconsistent with a high-value claim (e.g. generic items photographed for a "designer goods" claim, or items that appear new with tags for a "used personal effects" claim)?
-DOC-007  Font Inconsistency — For a document/receipt/report, are there multiple font styles or families within the same page suggesting edited fields?
-DOC-008  Altered Amounts or Dates — For a receipt, invoice, or booking confirmation, do any amounts, dates, or names show overwriting, misalignment, or digit tampering?
-DOC-009  Editable/Template Format — Does a document appear to be a self-made Word/template/spreadsheet rather than an issued receipt, official police report, or airline-issued boarding pass?
-DOC-010  Missing Official Markings — Does a document lack expected official markings (issuer logo, police report number, airline PNR/booking reference, stamp, or letterhead)?
-DOC-011  Signature/Stamp Anomaly — Does any signature or official stamp look photocopied, pasted, or inconsistent with a genuine issued document?
-DOC-012  Screenshot/Forwarded Submission — Does the image appear to be a screenshot, a photo-of-a-screen, or an emailed/forwarded artifact rather than an original document or photo?
-DOC-013  Provider/Issuer Mismatch — Do any details (logo, address, currency, language) conflict with the claimed destination, airline, hotel, or medical provider for this trip?
+DOC-001  Digital Manipulation — Signs of photo editing: cloning, warped edges, mismatched lighting/shadows, copy-pasted regions?
+DOC-002  Damage Inconsistent with Claimed Cause — Does the visible damage fail to match the claimed loss mechanism (e.g. "breakage in transit" but crates and packaging are pristine; "wet damage" with no water staining, tide marks or corrosion)?
+DOC-003  Stock or Reused Image — Does this look like a stock photo, a watermarked internet image, or a picture reused from another claim rather than an original survey photograph?
+DOC-004  Capture Date/Location Conflict — Visible timestamps, watermarks or surroundings that conflict with the voyage dates, the discharge port or the survey location?
+DOC-005  Missing Shipment Identifiers — For a survey photo: is there NO visible container number, seal number, shipping marks or package numbering tying the cargo to this shipment?
+DOC-006  Packing/Stowage Condition — Does the photo show insufficient or unsuitable packing, crating, dunnage or lashing (relevant to the ICC insufficient-packing exclusion) rather than an insured transit peril?
+DOC-007  Font Inconsistency — For a document, are there multiple font styles or families in fields that should be uniform (suggesting edited weights, quantities or values)? Compare each figure's typeface, weight, size and ink colour with the surrounding text in the same table or block — e.g. one monospaced figure among proportional text, or darker/bluer ink on a few values.
+DOC-008  Altered Figures or Dates — Do any weights, package counts, unit prices, values, B/L numbers or dates show overwriting, misalignment or digit tampering? On scanned pages, look closely for clean bright-white rectangles behind individual figures (a patch pasted over the original), sharper edges than the rest of the scan, or text tilted or offset from its neighbours' baseline.
+DOC-009  Editable/Template Format — Does a bill of lading, invoice or survey report look self-made (Word/spreadsheet template) rather than issued on the carrier's, seller's or surveyor's own form?
+DOC-010  Missing Official Markings — Does a document lack expected markings: carrier name and B/L number, "shipped on board" notation and date, signature on behalf of the carrier or master, surveyor letterhead and report number, invoice number?
+DOC-011  Signature/Stamp Anomaly — Does any signature or company chop/stamp look pasted, photocopied or inconsistent with a genuine issued document?
+DOC-012  Screenshot/Forwarded Submission — Is the image a screenshot, a photo of a screen, or a forwarded artefact rather than an original document or photograph?
+DOC-013  Cross-Document Mismatch — Do visible details (container or seal number, package count, gross weight, consignee, vessel/voyage, cargo description) conflict with each other or with the shipment they are claimed to belong to?
 
 RESPOND WITH ONLY valid JSON — no markdown fences, no commentary outside the JSON.
 Use this exact structure:
@@ -99,101 +100,13 @@ Severity values: "CRITICAL" for high-risk failures, "WARNING" for medium, "INFO"
 Set passed=true if the check finds NO issues, passed=false if an issue IS detected.
 """
 
-_SUPPLEMENTAL_VISION_PROMPT = """\
-You are a medical document forensics analyst for a supplemental health insurance company.
-Examine this document image and evaluate it against ALL 13 checks below.
-For EACH check, provide a JSON object with your finding.
+_VISION_PROMPT = _MARINE_VISION_PROMPT
 
-THE 13 DOCUMENT CHECKS:
-
-DOC-001  Font Inconsistency — Are there multiple font styles/families within the same document?
-DOC-002  Erasure Indicators — Is there any evidence of erased, whited-out, or overwritten content?
-DOC-003  Typed Over Handwritten — Is there typed text overlaying handwritten dates, notes, or entries?
-DOC-004  Entirely Handwritten — Is this an entirely handwritten report (unusual for a modern medical facility)?
-DOC-005  Missing Standard Headers — Does the document lack standard medical record headers (facility name, OVN, HCF identifiers)?
-DOC-006  Black & White Copy — Is this a black-and-white photocopy that could mask alterations?
-DOC-007  Editable Format — Does this appear to be from an editable document (Word/template) rather than a proper medical record system?
-DOC-008  Inconsistent Font Sizes — Are there inconsistent font sizes within what should be a uniformly formatted document?
-DOC-009  Medical Terminology Errors — Are there misspelled medical terms, incorrect procedure names, or non-standard medical language?
-DOC-010  Missing Vitals/Medications — For a full medical record, are vitals or medication lists absent?
-DOC-011  Signature Anomaly — Does the provider signature look stamped, photocopied, or inconsistent with a genuine signature?
-DOC-012  Email Submission Format — Does the document appear to have been submitted via email (email headers, forwarding artifacts) rather than through a secure portal?
-DOC-013  Non-Requesting Provider — Do any elements suggest this record is from a different provider than the one who requested/submitted the claim?
-
-RESPOND WITH ONLY valid JSON — no markdown fences, no commentary outside the JSON.
-Use this exact structure:
-
-{
-  "checks": [
-    {
-      "check_id": "DOC-001",
-      "check_name": "Font Inconsistency",
-      "passed": true,
-      "severity": "INFO",
-      "explanation": "Single consistent font throughout the document."
-    }
-  ],
-  "overall_assessment": "Brief 1-2 sentence summary of document authenticity.",
-  "confidence": 0.92
-}
-
-Severity values: "CRITICAL" for high-risk failures, "WARNING" for medium, "INFO" for low/pass.
-Set passed=true if the check finds NO issues, passed=false if an issue IS detected.
-"""
-
-_CAR_VISION_PROMPT = """\
-You are an auto insurance claims forensics analyst for a Car Insurance carrier.
-You inspect evidence images submitted with auto claims — most commonly photos of
-vehicle damage, but also repair estimates, police reports, and medical bills. Your job
-is to assess whether the image is a legitimate, authentic piece of supporting evidence
-or shows signs of fabrication, exaggeration, staged damage, or tampering.
-
-First decide what KIND of image this is (a real-world photo such as vehicle damage,
-or a document/paperwork scan such as a repair estimate or police report). Then evaluate
-it against ALL 13 checks below. For EACH check, provide a JSON object with your finding.
-If a check does not apply to this image type (e.g. a font check on a damage photo), mark
-it passed=true with a short "not applicable for this image type" explanation.
-
-THE 13 EVIDENCE CHECKS:
-
-DOC-001  Digital Manipulation — Are there signs of photo editing: cloning, warped edges, mismatched lighting/shadows, or copy-pasted regions?
-DOC-002  Staged or Inconsistent Damage — For vehicle-damage photos, does the damage look staged or inconsistent (e.g. damage patterns that don't match a real collision, rust/old damage presented as new)?
-DOC-003  Stock or Reused Image — Does this look like a stock photo, a watermarked image, or a picture reused from the internet rather than the claimant's own vehicle?
-DOC-004  Metadata/Capture Inconsistency — Are there visible timestamp, watermark, or screenshot artifacts that conflict with the claimed incident date or location?
-DOC-005  Missing Identifying Detail — For a vehicle photo, is there NO visible license plate, VIN, or other detail tying the vehicle to the claimant's actual car?
-DOC-006  Implausible Damage Value — Does the visible damage look inconsistent with a high-dollar repair estimate (e.g. a minor scratch behind a total-loss claim)?
-DOC-007  Font Inconsistency — For a repair estimate or report, are there multiple font styles or families within the same page suggesting edited fields?
-DOC-008  Altered Amounts or Dates — For an estimate, invoice, or report, do any amounts, line items, dates, or names show overwriting, misalignment, or digit tampering?
-DOC-009  Editable/Template Format — Does a document appear to be a self-made Word/template/spreadsheet rather than a shop-issued estimate or an official police report?
-DOC-010  Missing Official Markings — Does a document lack expected official markings (shop logo, estimate number, police report number, stamp, or letterhead)?
-DOC-011  Signature/Stamp Anomaly — Does any signature or official stamp look photocopied, pasted, or inconsistent with a genuine issued document?
-DOC-012  Screenshot/Forwarded Submission — Does the image appear to be a screenshot, a photo-of-a-screen, or an emailed/forwarded artifact rather than an original document or photo?
-DOC-013  Provider/Issuer Mismatch — Do any details (shop name, address, currency, language) conflict with the claimed repair shop or incident location?
-
-RESPOND WITH ONLY valid JSON — no markdown fences, no commentary outside the JSON.
-Use this exact structure:
-
-{
-  "checks": [
-    {
-      "check_id": "DOC-001",
-      "check_name": "Digital Manipulation",
-      "passed": true,
-      "severity": "INFO",
-      "explanation": "No signs of editing; lighting and edges are consistent."
-    }
-  ],
-  "overall_assessment": "Brief 1-2 sentence summary of whether this evidence appears legitimate.",
-  "confidence": 0.92
-}
-
-Severity values: "CRITICAL" for high-risk failures, "WARNING" for medium, "INFO" for low/pass.
-Set passed=true if the check finds NO issues, passed=false if an issue IS detected.
-"""
-
-# Domain is locked to "car" (see main.py). Env var is intentionally ignored.
-_DOMAIN_MODE = "car"
-_VISION_PROMPT = _CAR_VISION_PROMPT
+# Vision results are cached on disk, keyed by image bytes + prompt + model, so a
+# rehearsed demo replays identical findings without a live Bedrock call.
+# Set VISION_CACHE=false to force fresh analysis.
+_CACHE_DIR = Path(__file__).resolve().parent.parent / "vision_cache"
+_CACHE_ENABLED = os.getenv("VISION_CACHE", "true").strip().lower() not in ("false", "0", "no")
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -265,6 +178,63 @@ def _load_image(path: Path, max_bytes: int = 4_800_000) -> Tuple[bytes, str]:
     return buf.getvalue(), "jpeg"
 
 
+def _cache_path(image_bytes: bytes) -> Path:
+    digest = hashlib.sha256(image_bytes + _VISION_PROMPT.encode() + _VISION_MODEL.encode()).hexdigest()
+    return _CACHE_DIR / f"{digest[:32]}.json"
+
+
+def _dhash(path: Path, size: int = 8) -> Optional[int]:
+    """64-bit difference hash — survives resizing and re-compression of a photo."""
+    try:
+        img = Image.open(path).convert("L").resize((size + 1, size), Image.LANCZOS)
+    except OSError:
+        return None
+    px = list(img.getdata())
+    bits = 0
+    for row in range(size):
+        for col in range(size):
+            left = px[row * (size + 1) + col]
+            right = px[row * (size + 1) + col + 1]
+            bits = (bits << 1) | (1 if left > right else 0)
+    return bits
+
+
+def find_duplicate_images(claim_id: str, max_distance: int = 6,
+                          images_dir: Optional[Path] = None) -> List[Dict]:
+    """Find images filed on OTHER claims that are near-duplicates of this claim's images.
+
+    Deterministic (no LLM): compares perceptual hashes across the whole images folder.
+    Returns [{"image", "other_image", "other_key", "distance"}], where other_key is the
+    lowercase-alphanumeric claim key of the other file (e.g. "mc2988").
+    """
+    root = images_dir or _IMAGES_DIR
+    own = find_claim_images(claim_id, root)
+    if not own:
+        return []
+    key = _claim_id_to_image_key(claim_id)
+    own_names = {p.name for p in own}
+    others = [p for p in root.iterdir()
+              if p.suffix.lower() in _IMAGE_EXTENSIONS and p.name not in own_names]
+
+    own_hashes = [(p, _dhash(p)) for p in own]
+    matches = []
+    for other in others:
+        other_key = other.stem.split("_")[0].lower()
+        if other_key == key:
+            continue
+        oh = _dhash(other)
+        if oh is None:
+            continue
+        for p, h in own_hashes:
+            if h is None:
+                continue
+            distance = bin(h ^ oh).count("1")
+            if distance <= max_distance:
+                matches.append({"image": p.name, "other_image": other.name,
+                                "other_key": other_key, "distance": distance})
+    return matches
+
+
 def _get_bedrock_client():
     """Create a Bedrock Runtime client (reused across calls)."""
     return boto3.client("bedrock-runtime", region_name=_REGION)
@@ -281,9 +251,18 @@ def analyze_document_image(
 
     Returns the parsed JSON response from the model, or an error dict.
     """
-    client = bedrock_client or _get_bedrock_client()
     image_bytes, media_type = _load_image(image_path)
 
+    cache_path = _cache_path(image_bytes)
+    if _CACHE_ENABLED and cache_path.exists():
+        try:
+            with open(cache_path, encoding="utf-8") as f:
+                logger.info("Vision cache hit for %s", image_path.name)
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    client = bedrock_client or _get_bedrock_client()
     messages = [
         {
             "role": "user",
@@ -314,7 +293,15 @@ def analyze_document_image(
         # Parse JSON from response (strip markdown fences if model wraps them)
         cleaned = re.sub(r"^```(?:json)?\s*", "", output_text.strip())
         cleaned = re.sub(r"\s*```$", "", cleaned)
-        return json.loads(cleaned)
+        parsed = json.loads(cleaned)
+        if _CACHE_ENABLED:
+            try:
+                _CACHE_DIR.mkdir(exist_ok=True)
+                with open(cache_path, "w", encoding="utf-8") as f:
+                    json.dump(parsed, f, indent=2)
+            except OSError as e:
+                logger.warning("Could not write vision cache: %s", e)
+        return parsed
 
     except json.JSONDecodeError as e:
         logger.error("Failed to parse vision model response as JSON: %s", e)
@@ -354,15 +341,20 @@ def run_vision_document_checks(
     claim_id: str,
     images_dir: Optional[Path] = None,
     bedrock_client=None,
+    skip_images: Optional[set] = None,
 ) -> Optional[List[DocCheckResult]]:
     """
     Run the 13 DOC checks using Claude Haiku 4.5 vision on the claim's document image(s).
+
+    skip_images: file names to leave out — images already proven reused by the hash
+    check are reported by rule R-009, so a model opinion on them adds nothing.
 
     Returns:
         List[DocCheckResult] if an image was found and analyzed successfully.
         None if no image exists for this claim (caller should fall back to metadata checks).
     """
-    images = find_claim_images(claim_id, images_dir)
+    images = [p for p in find_claim_images(claim_id, images_dir)
+              if p.name not in (skip_images or set())]
     if not images:
         return None  # no image → caller uses metadata fallback
 

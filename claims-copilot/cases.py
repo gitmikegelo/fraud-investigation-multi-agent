@@ -5,16 +5,16 @@ from datetime import datetime
 
 
 class CaseType(str, Enum):
-    CAR_INSURANCE = "car_insurance"
+    MARINE_CARGO = "marine_cargo"
 
 
 class ClaimType(str, Enum):
-    # Car Insurance types
-    COLLISION = "collision"
-    COMPREHENSIVE = "comprehensive"
-    THEFT = "theft"
-    LIABILITY = "liability"
-    MEDICAL_PAYMENTS = "medical_payments"
+    # Marine cargo loss types
+    BREAKAGE = "breakage"
+    WET_DAMAGE = "wet_damage"
+    CONTAMINATION = "contamination"
+    SHORTAGE = "shortage"
+    THEFT_PILFERAGE = "theft_pilferage"
 
 
 class CasePriority(str, Enum):

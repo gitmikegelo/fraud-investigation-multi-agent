@@ -186,11 +186,6 @@ export function useCopilotChat(caseId) {
 
   const runChecklist = useCallback(() => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
-    setMessages(prev => [...prev, {
-      role: 'analyst',
-      text: '▶ Run Full Checklist',
-      timestamp: new Date().toISOString(),
-    }])
     setChecklistRunning(true)
     wsRef.current.send(JSON.stringify({ action: 'run_checklist' }))
   }, [])

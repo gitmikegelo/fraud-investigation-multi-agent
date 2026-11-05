@@ -1,29 +1,29 @@
-"""Builds case queue from car insurance claims + risk scores."""
+"""Builds case queue from marine cargo claims + risk scores."""
 
 from typing import List, Dict
 from cases import Case, CaseType, ClaimType, CasePriority
 
 
-CAR_CLAIM_TYPE_MAP = {
-    "collision": ClaimType.COLLISION,
-    "comprehensive": ClaimType.COMPREHENSIVE,
-    "theft": ClaimType.THEFT,
-    "liability": ClaimType.LIABILITY,
-    "medical_payments": ClaimType.MEDICAL_PAYMENTS,
+MARINE_CLAIM_TYPE_MAP = {
+    "breakage": ClaimType.BREAKAGE,
+    "wet_damage": ClaimType.WET_DAMAGE,
+    "contamination": ClaimType.CONTAMINATION,
+    "shortage": ClaimType.SHORTAGE,
+    "theft_pilferage": ClaimType.THEFT_PILFERAGE,
 }
 
 
-def build_car_case_queue(
+def build_marine_case_queue(
     claims: List,
     claim_risk_scores: Dict,
     claim_rules: Dict,
     data: Dict,
 ) -> List[Case]:
-    """Build the case queue from car insurance claims."""
+    """Build the case queue from marine cargo claims."""
     cases = []
-    insured_map = {i.insured_id: i for i in data.get("insureds", [])}
-    vehicle_map = {v.vehicle_id: v for v in data.get("vehicles", [])}
-    shop_map = {s.shop_id: s for s in data.get("repair_shops", [])}
+    consignee_map = {p.party_id: p for p in data.get("consignees", [])}
+    shipment_map = {s.shipment_id: s for s in data.get("shipments", [])}
+    surveyor_map = {s.surveyor_id: s for s in data.get("surveyors", [])}
     policy_map = {p.policy_id: p for p in data.get("policies", [])}
 
     for claim in claims:
@@ -52,14 +52,14 @@ def build_car_case_queue(
         else:
             flag_reason = "Standard review"
 
-        insured = insured_map.get(claim.insured_id)
-        insured_name = insured.full_name if insured else claim.insured_id
+        consignee = consignee_map.get(claim.consignee_id)
+        consignee_name = consignee.name if consignee else claim.consignee_id
 
-        vehicle = vehicle_map.get(claim.vehicle_id)
-        vehicle_desc = f"{vehicle.year} {vehicle.make} {vehicle.model}" if vehicle else ""
+        shipment = shipment_map.get(claim.shipment_id)
+        shipment_desc = shipment.description if shipment else ""
 
-        shop = shop_map.get(claim.shop_id) if claim.shop_id else None
-        shop_name = shop.name if shop else ""
+        surveyor = surveyor_map.get(claim.surveyor_id) if claim.surveyor_id else None
+        surveyor_name = surveyor.name if surveyor else ""
 
         policy = policy_map.get(claim.policy_id)
         coverage_start = policy.effective_date if policy else None
@@ -83,10 +83,10 @@ def build_car_case_queue(
 
         cases.append(Case(
             case_id=claim.claim_id,
-            case_type=CaseType.CAR_INSURANCE,
-            claim_type=CAR_CLAIM_TYPE_MAP.get(claim.claim_type, ClaimType.COLLISION),
-            subject_id=claim.insured_id,
-            subject_name=insured_name,
+            case_type=CaseType.MARINE_CARGO,
+            claim_type=MARINE_CLAIM_TYPE_MAP.get(claim.claim_type, ClaimType.BREAKAGE),
+            subject_id=claim.consignee_id,
+            subject_name=consignee_name,
             priority=priority,
             flag_reason=flag_reason,
             risk_score=round(score, 1),
@@ -99,14 +99,15 @@ def build_car_case_queue(
                 "rules_triggered": len(triggered),
                 "block_rules": len(block_rules),
                 "flag_rules": len(flag_rules),
-                "vehicle": vehicle_desc,
+                "shipment": shipment_desc,
+                "bl_number": shipment.bl_number if shipment else "",
                 "claim_type": claim.claim_type,
             },
             rules_triggered=rule_summaries,
             workflow_tasks=task_summaries,
-            employer_name=vehicle_desc,   # Repurpose field for vehicle display
-            member_id=claim.insured_id,
-            provider_name=shop_name,
+            employer_name=shipment_desc,  # Repurposed field: shipment summary
+            member_id=claim.consignee_id,
+            provider_name=surveyor_name,  # Repurposed field: surveyor
             claim_amount=claim.claim_amount,
             coverage_start=coverage_start,
             coverage_end=coverage_end,

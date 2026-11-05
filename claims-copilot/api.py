@@ -1,4 +1,4 @@
-"""FastAPI Backend for Claims Examiner Workflow Copilot (Car Insurance)."""
+"""FastAPI Backend for Claims Examiner Workflow Copilot (Marine Cargo)."""
 
 import sys
 import os
@@ -21,64 +21,54 @@ try:
 except ImportError:
     pass
 
-from main import initialize_car_data, DataContext, DOMAIN_MODE
+from main import initialize_marine_data, _context_dict, DataContext, DOMAIN_MODE
 from cases import CaseStatus
+from data.generate_marine import DEMO_TODAY
 from intelligence.document_vision import run_vision_document_checks, find_claim_images
-from intelligence.decree_client import run_decree_assessment
 
-from intelligence.checklist_car import run_full_checklist, run_checklist_step, CHECKLIST_STEPS
+from intelligence.checklist_marine import run_full_checklist, run_checklist_step, CHECKLIST_STEPS
 
 
-def _build_car_checklist_ctx(claim_id: str) -> dict:
-    """Build checklist context for car insurance mode.
+def _build_marine_checklist_ctx(claim_id: str) -> dict:
+    """Build checklist context for marine cargo mode.
 
-    Runs the external DECREE damage evaluation (short mode) on the claim's evidence
-    image (e.g. a vehicle-damage photo) when one is present, plus live vision analysis
-    used by other steps. Both fail soft — a missing image or a failed request leaves
-    the corresponding context key empty and downstream steps degrade gracefully.
+    Runs vision forensics on the claim's evidence images when present. Results are
+    disk-cached (see document_vision), so a rehearsed demo replays without Bedrock.
+    Fails soft — a missing image or a failed request leaves the step to manual review.
     """
     live_doc_results = dict(data_ctx.claim_doc_results)
-    decree_short = None
     images = find_claim_images(claim_id)
-    has_images = len(images) > 0
+    duplicates = data_ctx.supplemental_data.get("duplicate_images", {}).get(claim_id, [])
     if images:
         try:
-            vision_results = run_vision_document_checks(claim_id)
+            vision_results = run_vision_document_checks(
+                claim_id, skip_images={m["image"] for m in duplicates})
             if vision_results:
                 live_doc_results[claim_id] = vision_results
+                data_ctx.claim_doc_results[claim_id] = vision_results
         except Exception as e:
-            print(f"  ⚠ Vision analysis failed for {claim_id}: {e} — using cached metadata")
-        try:
-            decree_short = run_decree_assessment(claim_id, mode="short")
-        except Exception as e:
-            print(f"  ⚠ DECREE short assessment failed for {claim_id}: {e}")
-    return {
-        "claims": data_ctx.supplemental_claims,
-        "insureds": data_ctx.supplemental_data.get("insureds", []),
-        "vehicles": data_ctx.supplemental_data.get("vehicles", []),
-        "repair_shops": data_ctx.supplemental_data.get("repair_shops", []),
-        "policies": data_ctx.supplemental_data.get("policies", []),
-        "estimates": data_ctx.supplemental_data.get("estimates", []),
-        "police_reports": data_ctx.supplemental_data.get("police_reports", []),
-        "workflow_tasks": data_ctx.supplemental_data.get("workflow_tasks", []),
+            print(f"  ⚠ Vision analysis failed for {claim_id}: {e} — manual review")
+    ctx = _context_dict(data_ctx.supplemental_data)
+    ctx.update({
         "claim_rules": data_ctx.claim_rules,
         "claim_risk_scores": data_ctx.claim_risk_scores,
         "claim_doc_results": live_doc_results,
-        "decree_short": decree_short,
-        "has_claim_images": has_images,
-    }
+        "duplicate_images": data_ctx.supplemental_data.get("duplicate_images", {}),
+        "has_claim_images": bool(images),
+    })
+    return ctx
 
 data_ctx: Optional[DataContext] = None
 
 # One-liner descriptions shown in the progressive checklist UI
 CHECKLIST_DESCRIPTIONS = {
-    1: "Validating required fields and claim completeness",
-    2: "Verifying repair estimate and damage evidence",
-    3: "Confirming incident within the policy coverage period",
-    4: "AI document analysis, fraud scoring and rule-based screening",
-    5: "Checking repair-shop watchlist and valuation",
-    6: "Verifying coverage type and policy limits",
-    7: "Compiling final determination for examiner review",
+    1: "Validating claim completeness, notification timing and claim frequency",
+    2: "Cross-checking B/L, commercial invoice, packing list and VGM",
+    3: "Confirming the loss falls within the insured transit (ICC cl. 8)",
+    4: "AI forensics on survey photos and documents, reused-image check",
+    5: "Checking survey timing, appointment and surveyor independence",
+    6: "Verifying ICC clause cover, exclusions, sum insured and recovery rights",
+    7: "Compiling final determination for claims handler review",
 }
 
 
@@ -86,14 +76,14 @@ CHECKLIST_DESCRIPTIONS = {
 async def lifespan(app: FastAPI):
     global data_ctx
     print(f"[API] Initializing data context (mode: {DOMAIN_MODE})...")
-    data_ctx = initialize_car_data()
+    data_ctx = initialize_marine_data()
     try:
-        from agents.tools_car import set_context as set_car_context
-        set_car_context(data_ctx)
+        from agents.tools_marine import set_context as set_marine_context
+        set_marine_context(data_ctx)
     except ImportError:
         pass
     # Investigation + dossier tool context
-    _inv_mod, _dossier_mod = "agents.tools_investigation_car", "agents.tools_dossier_car"
+    _inv_mod, _dossier_mod = "agents.tools_investigation_marine", "agents.tools_dossier_marine"
     try:
         import importlib
         importlib.import_module(_inv_mod).set_context(data_ctx)
@@ -108,7 +98,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-_APP_TITLE = "Car Insurance Examiner Workflow Copilot"
+_APP_TITLE = "Marine Cargo Claims Copilot"
 app = FastAPI(title=_APP_TITLE, lifespan=lifespan)
 
 app.add_middleware(
@@ -156,7 +146,7 @@ async def health():
     # Surface the running process's mode so a stale/wrong-domain server is obvious at a glance.
     try:
         import agents.nodes as _nodes
-        _investigation_domain = "car" if "Car Insurance" in getattr(_nodes, "INVESTIGATION_PROMPT", "") else "unknown"
+        _investigation_domain = "marine" if "Marine Cargo" in getattr(_nodes, "INVESTIGATION_PROMPT", "") else "unknown"
     except Exception:
         _investigation_domain = "unknown"
     return {"status": "ok", "data_loaded": data_ctx is not None,
@@ -193,7 +183,7 @@ async def get_claims(
     if not data_ctx:
         return {"error": "Data not loaded"}
 
-    today = datetime(2026, 3, 15)
+    today = DEMO_TODAY
     week_start = today - timedelta(days=today.weekday())
 
     cases = list(data_ctx.case_queue)
@@ -377,7 +367,7 @@ async def get_claim_checklist(claim_id: str):
 
     # Build checklist context — runs live vision on the claim's evidence image when
     # present, so build off the event loop to avoid blocking on Bedrock.
-    checklist_ctx = await asyncio.to_thread(_build_car_checklist_ctx, claim_id)
+    checklist_ctx = await asyncio.to_thread(_build_marine_checklist_ctx, claim_id)
 
     results = run_full_checklist(claim_id, checklist_ctx)
     return {
@@ -390,35 +380,6 @@ async def get_claim_checklist(claim_id: str):
         "passed_count": sum(1 for r in results if r.status == "pass"),
         "needs_review_count": sum(1 for r in results if r.status == "needs_review"),
         "failed_count": sum(1 for r in results if r.status == "fail"),
-    }
-
-
-@app.get("/api/claims/{claim_id}/decree/full")
-async def get_claim_decree_full(claim_id: str):
-    """Run the external DECREE damage evaluation in full mode for a claim.
-
-    Returns the detailed markdown report plus cost/confidence fields. Called
-    on-demand when the examiner opens the full evaluation panel.
-    """
-    if not data_ctx:
-        return {"error": "Data not loaded"}
-
-    if not find_claim_images(claim_id):
-        return {"error": "No damage photo on file for this claim."}
-
-    # Run off the event loop — DECREE calls Bedrock and can take several seconds.
-    data = await asyncio.to_thread(run_decree_assessment, claim_id, "full")
-    if not data:
-        return {"error": "DECREE evaluation is unavailable. Please try again."}
-
-    return {
-        "claim_id": claim_id,
-        "report_markdown": data.get("reportContent", ""),
-        "cost_low": data.get("costEstimateLow"),
-        "cost_high": data.get("costEstimateHigh"),
-        "cost_mid": data.get("costEstimateMidpoint"),
-        "confidence": data.get("confidenceLevel"),
-        "confidence_factors": data.get("confidenceFactors", {}),
     }
 
 
@@ -462,23 +423,8 @@ async def get_claims_stats():
 
 @app.get("/api/policy-alerts")
 async def get_policy_alerts():
-    """Active policy changes affecting claims."""
-    if not data_ctx:
-        return {"error": "Data not loaded"}
-
-    alerts = []
-    for policy in data_ctx.supplemental_data.get("policies", []):
-        if policy.owner_change_date or policy.beneficiary_change_date:
-            member = data_ctx.get_member(policy.member_id)
-            alerts.append({
-                "policy_id": policy.policy_id,
-                "member_id": policy.member_id,
-                "member_name": member.full_name if member else policy.member_id,
-                "change_type": "ownership" if policy.owner_change_date else "beneficiary",
-                "change_date": policy.owner_change_date or policy.beneficiary_change_date,
-                "plan_type": policy.plan_type,
-            })
-    return {"alerts": alerts}
+    """Policy-change alerts are not used in the marine cargo domain."""
+    return {"alerts": []}
 
 
 # ── AI Dossier Generation ────────────────────────────────────────────────────
@@ -496,148 +442,123 @@ async def generate_ai_dossier(claim_id: str):
     if not case:
         return {"error": f"Claim {claim_id} not found"}
 
+    # Demo mode: the hero claim always shows the reviewed, scripted dossier (no LLM call).
+    if is_demo_mode() and claim_id == "MC-3107":
+        from demo_runner_marine import demo_dossier_text
+        case.dossier = demo_dossier_text()
+        return {"claim_id": claim_id, "dossier": case.dossier, "generated_at": datetime.now().isoformat()}
+
     claim = data_ctx.get_claim(claim_id)
-    # Car domain: subject is the insured; the shop plays the "provider" role.
-    subject_id = getattr(claim, 'insured_id', '') if claim else ''
-    insured = data_ctx.get_insured(subject_id) if subject_id else None
-    vehicle = data_ctx.get_vehicle(claim.vehicle_id) if claim and getattr(claim, 'vehicle_id', None) else None
-    shop = data_ctx.get_shop(claim.shop_id) if claim and getattr(claim, 'shop_id', None) else None
+    consignee =data_ctx.get_consignee(claim.consignee_id) if claim else None
+    shipment = data_ctx.get_shipment(claim.shipment_id) if claim else None
     policy = data_ctx.get_policy(claim.policy_id) if claim else None
+    survey = data_ctx.get_survey(claim.survey_id) if claim and claim.survey_id else None
+    surveyor = data_ctx.get_surveyor(claim.surveyor_id) if claim and claim.surveyor_id else None
+    forwarder = data_ctx.get_forwarder(shipment.forwarder_id) if shipment else None
+    shipper = data_ctx.get_shipper(shipment.shipper_id) if shipment else None
     risk = data_ctx.claim_risk_scores.get(claim_id)
     rules = data_ctx.claim_rules.get(claim_id, [])
     doc_results = data_ctx.claim_doc_results.get(claim_id, [])
     tasks = data_ctx.get_claim_tasks(claim_id)
-    insured_claims = data_ctx.get_insured_claims(subject_id) if subject_id else []
 
     triggered_rules = [r for r in rules if r.triggered]
     failed_docs = [d for d in doc_results if not d.passed]
-    critical_docs = [d for d in failed_docs if d.severity == "CRITICAL"]
+    subject_name = consignee.name if consignee else case.subject_name
 
-    # Related claims across the book
-    same_shop_claims = [
-        c for c in data_ctx.supplemental_claims
-        if getattr(c, 'shop_id', None) == getattr(claim, 'shop_id', None) and c.claim_id != claim_id
-    ] if claim and getattr(claim, 'shop_id', None) else []
-    prior_insured_claims = [
-        c for c in data_ctx.supplemental_claims
-        if getattr(c, 'insured_id', '') == subject_id and c.claim_id != claim_id
-    ]
+    prior_consignee = data_ctx.get_prior_claims(party_id=claim.consignee_id) if claim else []
+    prior_surveyor = data_ctx.get_prior_claims(surveyor_id=claim.surveyor_id) if claim and claim.surveyor_id else []
+    network_lines = []
+    if consignee:
+        for ent in (surveyor, forwarder):
+            if not ent:
+                continue
+            shared = set(ent.director_ids) & set(consignee.director_ids)
+            if shared:
+                names = ", ".join(data_ctx.get_director(d).full_name for d in shared)
+                network_lines.append(f"{ent.name} shares director(s) {names} with the claimant")
+            if ent.registered_address and ent.registered_address == consignee.registered_address:
+                network_lines.append(f"{ent.name} shares the claimant's registered address ({ent.registered_address})")
 
-    # Pre-compute formatted values
-    claim_amount_str = f"${claim.claim_amount:,.2f}" if claim else "$0.00"
-    coverage_limit = 0.0
-    if policy and claim:
-        coverage_limit = {
-            "collision": policy.coverage_collision,
-            "comprehensive": policy.coverage_comprehensive,
-            "theft": policy.coverage_comprehensive,
-            "liability": policy.coverage_liability,
-            "medical_payments": policy.coverage_medical_payments,
-        }.get(claim.claim_type, 0.0)
-    coverage_str = f"${coverage_limit:,.2f}"
-    shop_total = sum(getattr(c, 'claim_amount', 0) for c in same_shop_claims)
-    subject_name = getattr(insured, 'full_name', None) or case.subject_name
-    incident_date = getattr(claim, 'date_of_incident', 'N/A') if claim else 'N/A'
-    vehicle_desc = f"{vehicle.year} {vehicle.make} {vehicle.model}" if vehicle else 'N/A'
-    vehicle_acv = vehicle.acv if vehicle else 0.0
-    shop_name = shop.name if shop else 'N/A'
-    shop_watchlist = getattr(shop, 'on_watchlist', False) if shop else False
-    policy_status = getattr(policy, 'status', 'N/A') if policy else 'N/A'
-    policy_effective = getattr(policy, 'effective_date', 'N/A') if policy else 'N/A'
-    policy_expiration = getattr(policy, 'expiration_date', 'N/A') if policy else 'N/A'
-    deductible_str = f"${policy.deductible:,.2f}" if policy else 'N/A'
-    insured_flagged = getattr(insured, 'flagged', False) if insured else False
+    containers = chr(10).join(
+        f"  - {c.container_no} ({c.size_type}) seal load {c.seal_no_loading} / discharge {c.seal_no_discharge}, "
+        f"VGM {c.vgm_kg:,} kg, tare {c.tare_kg:,} kg" for c in (shipment.containers if shipment else []))
 
-    insured_history_lines = chr(10).join(
-        f'  - {c.claim_id}: {c.claim_type}, ${c.claim_amount:,.2f}, filed {c.date_filed}'
-        for c in prior_insured_claims[:10]
-    ) or '  No prior auto claims'
-    extra_context = f"""
-VEHICLE: {vehicle_desc} (ACV ${vehicle_acv:,.2f})
-INCIDENT DATE: {incident_date}
-INCIDENT DESCRIPTION: {getattr(claim, 'incident_description', '') if claim else ''}
-INJURY CLAIMED: {getattr(claim, 'injury_claimed', False) if claim else False}
-POLICE REPORT FILED: {getattr(claim, 'police_report_filed', False) if claim else False}
-INSURED FLAGGED: {insured_flagged}
-INSURED CLAIM HISTORY ({len(prior_insured_claims)} prior):
-{insured_history_lines}
-"""
-
-    analyst_entity = "Car Insurance SIU"
-    # Build structured context for the LLM
+    analyst_entity = "Marine Cargo Claims"
     context_block = f"""
-CLAIM: {claim_id}
-Subject (Insured): {subject_name} (ID: {subject_id})
-Vehicle: {vehicle_desc} | ACV: ${vehicle_acv:,.2f}
-Claim Type: {claim.claim_type if claim else 'N/A'} | Claim Amount: {claim_amount_str}
-Incident Date: {incident_date} | Date Filed: {claim.date_filed if claim else 'N/A'}
-Claim Source: {claim.claim_source if claim else 'N/A'}
-Repair Shop: {shop_name} ({getattr(claim, 'shop_id', 'N/A') if claim else 'N/A'}) | On Watchlist: {shop_watchlist}
-Policy: {policy.policy_id if policy else 'N/A'} | Coverage Limit ({claim.claim_type if claim else 'N/A'}): {coverage_str} | Deductible: {deductible_str} | Status: {policy_status}
-Coverage Period: {policy_effective} to {policy_expiration}
+CLAIM: {claim_id} | Type: {claim.claim_type} | Amount claimed: ${claim.claim_amount:,.2f}
+Claimant (consignee): {subject_name} ({claim.consignee_id}) — incorporated {getattr(consignee, 'incorporated', 'N/A')}, ~{getattr(consignee, 'shipments_per_year', 'N/A')} shipments/yr
+Loss description: {claim.loss_description}
+Dates: loss discovered {claim.date_of_loss}; insurer notified {claim.notice_to_insurer_date}; carrier notified {claim.notice_to_carrier_date or 'NOT NOTIFIED'}; filed {claim.date_filed}
 
-RISK: {risk.total_score if risk else 0}/100 ({risk.tier if risk else 'N/A'})
-Top Risk Factors: {'; '.join(risk.top_factors[:5]) if risk and risk.top_factors else 'None'}
-Rules Boost: {risk.rules_boost if risk else 0}
-{extra_context}
+SHIPMENT: B/L {shipment.bl_number} | {shipment.carrier} {shipment.vessel} voy. {shipment.voyage}
+Route: {shipment.port_of_loading} -> {shipment.port_of_discharge} | Incoterm {shipment.incoterm}
+Shipped on board {shipment.shipped_on_board}; discharged {shipment.discharge_date}; gate-out {shipment.gate_out_date}
+Commodity: {shipment.commodity} | Quantity {shipment.quantity:,.0f} {shipment.unit} @ ${shipment.unit_price:,.2f}
+Invoice {shipment.invoice_no}: ${shipment.invoice_value:,.2f} | Shipper: {getattr(shipper, 'name', 'N/A')} (incorporated {getattr(shipper, 'incorporated', 'N/A')})
+B/L clause: {shipment.bl_clause} | B/L gross weight {shipment.gross_weight_bl_kg:,} kg | VGM cargo weight {shipment.vgm_cargo_kg:,} kg
+EIR at discharge: {shipment.eir_remarks_discharge}
+Containers:
+{containers}
+Forwarder: {getattr(forwarder, 'name', 'N/A')}
+
+INSURANCE: Certificate {policy.policy_id} under open cover {policy.open_cover_no} | {policy.clause} | Insured value ${policy.insured_value:,.2f} ({policy.basis_of_valuation}) | Excess ${policy.excess:,.2f}
+
+SURVEY: {getattr(survey, 'report_no', 'None')} by {getattr(surveyor, 'name', 'N/A')} ({'insurer panel' if surveyor and surveyor.insurer_panel else 'NOT on insurer panel'}), appointed by {getattr(survey, 'appointed_by', 'N/A')}, on {getattr(survey, 'survey_date', 'N/A')} at {getattr(survey, 'survey_location', 'N/A')}; joint with carrier: {getattr(survey, 'joint_with_carrier', 'N/A')}; cause: {getattr(survey, 'cause_of_loss', 'N/A')}; damage {getattr(survey, 'damage_pct', 0)}%
+
+RISK: {risk.total_score if risk else 0}/100 ({risk.tier if risk else 'N/A'}) | Top factors: {'; '.join(risk.top_factors[:5]) if risk and risk.top_factors else 'None'}
+
 RULES TRIGGERED ({len(triggered_rules)}):
 {chr(10).join(f'  [{r.rule_id}] {r.severity} — {r.rule_name}: {r.explanation}' for r in triggered_rules) if triggered_rules else '  None'}
 
-DOCUMENT ANALYSIS FAILURES ({len(failed_docs)}):
-{chr(10).join(f'  [{d.check_id}] {d.severity} — {d.check_name}: {d.explanation}' for d in failed_docs) if failed_docs else '  All document checks passed'}
+DOCUMENT FORENSICS FAILURES ({len(failed_docs)}):
+{chr(10).join(f'  [{d.check_id}] {d.severity} — {d.check_name}: {d.explanation}' for d in failed_docs) if failed_docs else '  No failures (or no images analysed)'}
 
-SAME-SHOP CLAIMS (excluding this one): {len(same_shop_claims)} claims, total ${shop_total:,.2f}
+NETWORK:
+{chr(10).join('  - ' + x for x in network_lines) if network_lines else '  No shared directors or addresses found'}
+Prior paid claims — this claimant: {len(prior_consignee)} (${sum(p.amount_paid for p in prior_consignee):,.2f})
+Prior paid claims — this surveyor: {len(prior_surveyor)} across {len({p.consignee_id for p in prior_surveyor})} consignee(s) (${sum(p.amount_paid for p in prior_surveyor):,.2f})
 
-WORKFLOW TASKS ({len(tasks)}):
-{chr(10).join(f'  - {t.task_type}: {t.status}' + (f' ({t.days_waiting}d waiting)' if t.days_waiting else '') for t in tasks) if tasks else '  No tasks'}
+WORKFLOW TASKS:
+{chr(10).join(f'  - {t.task_type}: {t.status}' + (f' ({t.notes})' if t.notes else '') for t in tasks) if tasks else '  No tasks'}
 """
 
-    dossier_prompt = f"""You are a Senior Special Investigations Unit (SIU) analyst at {analyst_entity} writing a formal claim investigation dossier. Write a comprehensive, professional escalation report in Markdown.
+    dossier_prompt = f"""You are a senior marine cargo claims investigator at {analyst_entity} writing a formal claim investigation dossier. Write a professional report in Markdown.
 
-Use ONLY the factual data provided below. Do not invent numbers. Write with clarity, precision, and the authority of an experienced fraud investigator. Each section should tell the story of what the data shows.
+Use ONLY the factual data below. Do not invent numbers, names or dates. Use correct marine insurance terminology (bill of lading, VGM, EIR, Institute Cargo Clauses, duty of assured, recovery/subrogation). Where a finding could have an innocent explanation, say so.
 
 ---
 CLAIM INTELLIGENCE DATA:
 {context_block}
 ---
 
-Write the following sections in this exact order. Use proper Markdown headers (##, ###). Be specific, cite numbers, and connect the dots across sections where patterns exist.
+Write these sections in this order, with ## headers:
 
 ## EXECUTIVE SUMMARY
-2–3 paragraphs. Lead with the risk determination (HIGH/MEDIUM/LOW). Describe what type of potential fraud or anomaly this represents. State the recommended action and why. Write this as if handing it to a VP who has 60 seconds.
+2 short paragraphs for a senior executive with 60 seconds. Lead with the determination (HIGH/MEDIUM/LOW risk), what the evidence shows, the recommended action and the financial effect.
 
-## CLAIM OVERVIEW
-A concise table with all key claim identifiers (Claim ID, Insured, Vehicle, Claim Type, Amount, Dates, Repair Shop, Policy, Risk Score).
+## CLAIM & SHIPMENT OVERVIEW
+A table: Claim ID, Claimant, Commodity, B/L, Vessel/Voyage, Route, Containers, Invoice value, Insured value, Amount claimed, Clause, Risk score.
 
-## INSURED & VEHICLE ANALYSIS
-Narrative analysis of the insured's claim history (count, claim-type patterns, flagged anomalies) and the vehicle (value vs. claim amount). If the insured shows a serial-claim pattern or the claim exceeds the vehicle ACV, explain what is normal and why this deviates.
+## DOCUMENT CROSS-CHECK
+Compare the B/L, commercial invoice, packing list and VGM. Explain any weight, quantity or value inconsistency and what it implies.
 
-## FRAUD INDICATORS & RULES ANALYSIS
-For each triggered rule, write a paragraph explaining: what the rule detects, what the data shows for this claim, and why it is significant. Connect indicators to each other where they form a pattern. If no rules triggered, state that and explain what that means for the determination.
+## SURVEY & EVIDENCE INTEGRITY
+Survey timing, who appointed the surveyor, joint survey, location, and any evidence-image findings.
 
-## DOCUMENT INTEGRITY ASSESSMENT
-Narrative analysis of document check results. For each failure, explain what it could indicate (fraud vs innocent explanation). Assess overall document integrity. If no failures, confirm documentation is compliant.
-
-## FINANCIAL EXPOSURE ANALYSIS
-Calculate and explain: current claim amount, potential dependent exposure if claim pays out, realistic maximum exposure if pattern scales, and any recovery estimate. Be specific with arithmetic.
+## COVERAGE ANALYSIS (ICC)
+Is the peril covered under the stated clause? Transit period (cl. 8), exclusions (cl. 4), duty of assured and preservation of recovery rights (cl. 16), sum insured.
 
 ## NETWORK & RELATED CLAIMS
-Summarize same-employer and same-provider claim patterns. Note any cross-claim signals. Quantify the scope.
+Shared directors/addresses and prior claims. Quantify.
 
-## POLICY & COVERAGE ANALYSIS
-Assess whether the claim is within policy coverage, any type mismatches, date alignment, and any policy changes (owner/beneficiary) that create alert conditions.
-
-## WORKFLOW STATUS
-Summarize open tasks, TAT compliance, and any pending medical record requests.
+## FINANCIAL POSITION
+Amount claimed, amount substantiated (if determinable), recovery prospects against the carrier. Show arithmetic.
 
 ## RECOMMENDED ACTION
-One of: APPROVE / PEND / DENY / ESCALATE TO SIU. Provide a direct, justified recommendation with the specific next steps the examiner must take. Be actionable.
-
-## EVIDENCE SUMMARY FOR SIU
-Bullet list of the key evidence points — written in a format suitable for legal review or prosecutor referral.
+One of: APPROVE / APPROVE AND PURSUE RECOVERY / DECLINE / REFER FOR INVESTIGATION. Give the specific next steps.
 
 ---
-*Generated {datetime.now().strftime('%Y-%m-%d %H:%M')} · {analyst_entity} · ARIA Examiner Workflow Copilot*
+*Generated {datetime.now().strftime('%Y-%m-%d %H:%M')} · {analyst_entity} · ARIA Claims Copilot*
 """
 
     try:
@@ -691,7 +612,7 @@ async def generate_claimant_letter(claim_id: str):
 
     subject_name = getattr(insured, 'full_name', None) or case.subject_name
     claim_type = (claim.claim_type if claim else case.claim_type.value).replace('_', ' ')
-    incident_date = getattr(claim, 'date_of_incident', 'N/A') if claim else 'N/A'
+    incident_date = getattr(claim, 'date_of_loss', 'N/A') if claim else 'N/A'
     today = datetime.now().strftime('%B %d, %Y')
 
     # Internal signal summary — used ONLY to help Claude pick the right tone.
@@ -704,7 +625,7 @@ INTERNAL REVIEW SIGNALS (for tone selection ONLY — never mention these in the 
 - Open/pending workflow tasks: {len(open_tasks)}
 """
 
-    letter_prompt = f"""You are a claims correspondence officer at a car insurance company. Write a short, professional letter addressed to the policyholder about their claim.
+    letter_prompt = f"""You are a claims correspondence officer at a marine cargo insurer. Write a short, professional letter addressed to the claimant (the assured / consignee) about their cargo claim.
 
 You are given internal review signals below. Use them ONLY to decide the appropriate outcome and tone. Choose ONE of these three situations based on the signals:
   1. REVIEW COMPLETE, IN ORDER — if the internal signals are clean (LOW risk, no failed document checks, no open tasks). Reassure them their claim has been reviewed and is proceeding normally.
@@ -723,7 +644,7 @@ CLAIM CONTEXT:
 - Claimant: {subject_name}
 - Claim reference: {claim_id}
 - Claim type: {claim_type} claim
-- Reported incident date: {incident_date}
+- Date loss discovered: {incident_date}
 {internal_signal}
 Write only the letter, nothing else."""
 
@@ -791,7 +712,7 @@ async def chat_websocket(websocket: WebSocket, claim_id: str):
             # ── Progressive checklist runner ─────────────────────────────
             if data.get("action") == "run_checklist":
                 # Run vision analysis before checklist so Step 5 uses real image inspection
-                checklist_ctx = await asyncio.to_thread(_build_car_checklist_ctx, claim_id)
+                checklist_ctx = await asyncio.to_thread(_build_marine_checklist_ctx, claim_id)
                 # Send initial checklist skeleton
                 steps_skeleton = [
                     {"step_number": sn, "step_name": sname,
@@ -952,7 +873,7 @@ def _patch_loggers(ws: WebSocket, loop: asyncio.AbstractEventLoop):
     tdos = None
     # Patch the tool modules that are actually in use for this domain so their
     # tool:* log lines are captured to the single per-run file.
-    _inv_name, _dos_name = "agents.tools_investigation_car", "agents.tools_dossier_car"
+    _inv_name, _dos_name = "agents.tools_investigation_marine", "agents.tools_dossier_marine"
     try:
         import importlib
         tinv = importlib.import_module(_inv_name)
@@ -983,13 +904,13 @@ def _unpatch_loggers():
     if _original_node_log:
         nodes_mod._log = _original_node_log
     try:
-        import agents.tools_investigation as tinv
+        import agents.tools_investigation_marine as tinv
         if _original_tool_log_inv:
             tinv._tool_log = _original_tool_log_inv
     except ImportError:
         pass
     try:
-        import agents.tools_dossier as tdos
+        import agents.tools_dossier_marine as tdos
         if _original_tool_log_dos:
             tdos._tool_log = _original_tool_log_dos
     except ImportError:
@@ -1011,11 +932,7 @@ def _unpatch_loggers():
 def _build_investigation_query(claim_id: str, case, checklist_context: dict = None) -> str:
     """Build a focused initial query for the 3-agent orchestration scoped to one claim."""
     claim = data_ctx.get_claim(claim_id) if data_ctx else None
-    # TravelClaim uses traveler_id; supplemental health uses member_id
-    member_id = getattr(claim, 'member_id', None) if claim else None
-    traveler_id = getattr(claim, 'traveler_id', None) if claim else None
-    subject_id = member_id or traveler_id
-    member = data_ctx.get_member(member_id) if member_id else None
+    shipment = data_ctx.get_shipment(claim.shipment_id) if claim else None
     risk = data_ctx.claim_risk_scores.get(claim_id) if data_ctx else None
     rules = data_ctx.claim_rules.get(claim_id, []) if data_ctx else []
     doc_results = data_ctx.claim_doc_results.get(claim_id, []) if data_ctx else []
@@ -1024,41 +941,39 @@ def _build_investigation_query(claim_id: str, case, checklist_context: dict = No
     failed_docs = [d for d in doc_results if not d.passed]
 
     lines = [
-        f"Investigate claim {claim_id} for potential fraud.",
-        f"Subject: {case.subject_name} ({case.subject_id})",
+        f"Investigate marine cargo claim {claim_id} for potential fraud.",
+        f"Claimant (consignee): {case.subject_name} ({case.subject_id})",
         f"Claim type: {case.claim_type.value if hasattr(case.claim_type, 'value') else case.claim_type}",
         f"Risk score: {case.risk_score}",
     ]
     if claim:
         lines.append(f"Claim amount: ${claim.claim_amount:,.2f}")
-        lines.append(f"Provider: {getattr(claim, 'provider_id', 'N/A')}")
-        if subject_id:
-            label = "Traveler" if traveler_id else "Member"
-            lines.append(f"{label}: {subject_id}")
+        lines.append(f"Surveyor: {claim.surveyor_id or 'N/A'}")
+    if shipment:
+        lines.append(f"Shipment: B/L {shipment.bl_number}, {shipment.description}, "
+                     f"forwarder {shipment.forwarder_id}, shipper {shipment.shipper_id}")
     if risk:
         lines.append(f"Risk tier: {risk.tier}")
         if risk.top_factors:
             lines.append(f"Top risk factors: {'; '.join(risk.top_factors[:5])}")
     if triggered_rules:
         lines.append(f"Rules triggered ({len(triggered_rules)}):")
-        for r in triggered_rules[:5]:
+        for r in triggered_rules[:8]:
             lines.append(f"  [{r.severity}] {r.rule_name}: {r.explanation}")
     if failed_docs:
         lines.append(f"Document check failures ({len(failed_docs)}):")
         for d in failed_docs[:5]:
             lines.append(f"  [{d.severity}] {d.check_name}: {d.explanation}")
-    if member and getattr(member, 'suspicious_banner', False):
-        lines.append("⚠ SUSPICIOUS BANNER ACTIVE on member")
 
     if checklist_context and checklist_context.get("steps"):
         lines.append("\n--- PRIOR CHECKLIST FINDINGS ---")
         for step in checklist_context["steps"]:
-            status = step.get("status", "unknown")
-            lines.append(f"[Step {step.get('step_number')}: {step.get('step_name')}] status={status}")
+            lines.append(f"[Step {step.get('step_number')}: {step.get('step_name')}] status={step.get('status', 'unknown')}")
             for f in (step.get("findings") or [])[:5]:
                 lines.append(f"  {f}")
 
-    lines.append("\nStart by scanning for suspicious entities related to this claim's provider and member, then profile them, analyze connections, and compile a complete dossier.")
+    lines.append("\nStart by scanning for suspicious entities linked to this claim (claimant, surveyor, forwarder, "
+                 "shipper), profile them, map shared directors and addresses, and compile a complete dossier.")
     return "\n".join(lines)
 
 
@@ -1217,11 +1132,9 @@ async def investigate_websocket(websocket: WebSocket, claim_id: str):
     loop = asyncio.get_event_loop()
 
     try:
-        if is_demo_mode():
-            if DOMAIN_MODE == "car":
-                from demo_runner_car import run_demo_investigation_sync
-            else:
-                from demo_runner import run_demo_investigation_sync
+        # The scripted replay tells MC-3107's story only; other claims run the live agents.
+        if is_demo_mode() and claim_id == "MC-3107":
+            from demo_runner_marine import run_demo_investigation_sync
             _patch_loggers(websocket, loop)
             try:
                 demo_dossier = await loop.run_in_executor(

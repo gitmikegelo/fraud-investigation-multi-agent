@@ -1,5 +1,5 @@
 """
-LangGraph Agent Nodes with AWS Bedrock Claude 3.5 Haiku
+LangGraph Agent Nodes (Marine Cargo investigation) on AWS Bedrock
 """
 
 import json
@@ -118,13 +118,13 @@ def _safe_agent_invoke(agent, messages: list, agent_name: str, fallback_message:
             }
 
 try:
-    from .prompts_investigation_car import (
+    from .prompts_investigation_marine import (
         ORCHESTRATOR_PROMPT,
         INVESTIGATION_PROMPT,
         DOSSIER_PROMPT,
     )
-    from .tools_investigation_car import INVESTIGATION_TOOLS
-    from .tools_dossier_car import DOSSIER_TOOLS, clear_tool_cache
+    from .tools_investigation_marine import INVESTIGATION_TOOLS
+    from .tools_dossier_marine import DOSSIER_TOOLS, clear_tool_cache
 except ImportError:
     ORCHESTRATOR_PROMPT = INVESTIGATION_PROMPT = DOSSIER_PROMPT = ""
     INVESTIGATION_TOOLS = DOSSIER_TOOLS = []
@@ -201,9 +201,9 @@ class LLMInputLogger(BaseCallbackHandler):
 
 
 def get_bedrock_llm(temperature: float = 0.1, max_tokens: int = 4096, agent_name: str = "LLM"):
-    """Get AWS Bedrock Claude 3 Sonnet instance using Converse API."""
+    """Get an AWS Bedrock Claude chat model (Converse API); model from BEDROCK_MODEL_ID."""
     import os
-    model_id = os.getenv('BEDROCK_MODEL_ID', 'anthropic.claude-3-sonnet-20240229-v1:0')
+    model_id = os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-haiku-4-5-20251001-v1:0')
     region = os.getenv('AWS_REGION', 'us-east-1')
     return ChatBedrockConverse(
         model=model_id,
@@ -359,7 +359,7 @@ def get_investigation_agent():
 
 def investigation_node(state: InvestigationState) -> InvestigationState:
     """
-    Detective Agent - Uses 7 tools to investigate fraud.
+    Detective Agent - Uses 7 marine investigation tools (consignees, surveyors, forwarders, shippers, directors).
     """
     _log('Investigation', 'Starting investigation sub-agent (7 tools available)...')
     t0 = time.time()
@@ -367,7 +367,7 @@ def investigation_node(state: InvestigationState) -> InvestigationState:
     
     # Get the last orchestrator message
     messages = state.get('messages', [])
-    last_message = messages[-1] if messages else HumanMessage(content="Scan for high anomaly providers")
+    last_message = messages[-1] if messages else HumanMessage(content="Scan for suspicious marine cargo claims and linked entities")
     
     # Ensure we pass a clean HumanMessage to the sub-agent
     if isinstance(last_message, AIMessage):
@@ -380,11 +380,15 @@ def investigation_node(state: InvestigationState) -> InvestigationState:
 
     # First run: always force a real scan — never let orchestrator hallucinations seed fake IDs
     if not prior:
+        # Seed with the original case brief (built from real data), not the orchestrator's text.
+        case_brief = next((_extract_text(m.content) for m in messages if isinstance(m, HumanMessage)), "")
         last_message = HumanMessage(
             content=(
-                "Use the scan_suspicious_entities tool first to identify real high-anomaly agents. "
-                "Only use agent IDs returned by that scan for all subsequent tool calls. "
-                "Do NOT invent or assume any agent IDs."
+                "Use the scan_suspicious_entities tool first to identify real high-risk marine cargo claims "
+                "and their linked entities (consignees CNE-, surveyors SVY-, forwarders FWD-, shippers SHR-). "
+                "Only use claim and entity IDs returned by the tools or stated in the case brief. "
+                "Do NOT invent or assume any IDs."
+                + (f"\n\nCase brief:\n{case_brief[:MAX_MESSAGE_LENGTH // 2]}" if case_brief else "")
             )
         )
 
@@ -499,7 +503,7 @@ def dossier_node(state: InvestigationState) -> InvestigationState:
         findings_summary = _truncate_text(findings_summary, MAX_FINDINGS_LENGTH, "findings")
 
     # Include the original claim context so the dossier can compile even if the
-    # investigation tools returned no results (e.g. travel claims crashing scan tool).
+    # investigation tools returned no results.
     original_claim_context = ""
     for msg in state.get('messages', []):
         if isinstance(msg, HumanMessage):
@@ -540,14 +544,16 @@ def dossier_node(state: InvestigationState) -> InvestigationState:
 
     dossier_content = ''
     evidence_sufficient = False
+    found_compiled_dossier = False
     
     # FIRST: Look for the compile_dossier ToolMessage - this has the actual markdown
     for msg in reversed(agent_messages):
         if isinstance(msg, ToolMessage):
             # Check if this is from compile_dossier by looking at the content
             content = _extract_text(msg.content) if msg.content else ''
-            if any(kw in content[:150] for kw in ['INVESTIGATION DOSSIER', 'SUPPLEMENTAL HEALTH', 'FRAUD DOSSIER', 'DEPENDENT FRAUD', 'PROVIDER MILL']):
+            if any(kw in content[:150] for kw in ['INVESTIGATION DOSSIER', 'FRAUD DOSSIER']):
                 dossier_content = content
+                found_compiled_dossier = True
                 _log('Dossier', f'Found compile_dossier output: {len(dossier_content)} chars')
                 break
     
@@ -578,7 +584,13 @@ def dossier_node(state: InvestigationState) -> InvestigationState:
         # Check if evidence was assessed as sufficient
         # IMPORTANT: check for INSUFFICIENT first — "SUFFICIENT" is a substring of "INSUFFICIENT"
         content_upper = dossier_content.upper()
-        if 'INSUFFICIENT' in content_upper or 'NOT SUFFICIENT' in content_upper or 'INCOMPLETE' in content_upper:
+        # A compiled dossier carries an explicit status line. Trust it (or the assess_evidence
+        # result) rather than scanning the body: marine evidence can legitimately mention
+        # e.g. "insufficient packing" (ICC cl. 4.3) without meaning the evidence is insufficient.
+        if found_compiled_dossier and ('EVIDENCE SUFFICIENT' in content_upper or assess_evidence_sufficient):
+            evidence_sufficient = True
+            _log('Dossier', 'Compiled dossier found with sufficient evidence')
+        elif 'INSUFFICIENT' in content_upper or 'NOT SUFFICIENT' in content_upper or 'INCOMPLETE' in content_upper:
             evidence_sufficient = False
             _log('Dossier', 'Evidence assessed as INSUFFICIENT - looping back to investigation')
         elif 'SUFFICIENT' in content_upper:

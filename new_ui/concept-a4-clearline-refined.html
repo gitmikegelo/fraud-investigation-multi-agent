@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concept A4 · Clearline Refined — Claims Co-Pilot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#F4F3F8; --surface:#FFFFFF; --ink:#16151D; --ink-2:#3B3947; --muted:#6A6878; --line:#E5E3EC; --line-2:#EFEDF4;
+  --accent:#A100FF; --accent-ink:#7500C0; --accent-soft:#F4EAFF; --accent-line:#E3D0FA;
+  --high:#C22F3A; --high-soft:#FCEEEF; --med:#A2650C; --med-soft:#FBF2E2; --med-line:#F0DDB8; --low:#2F7A55; --low-soft:#E9F5EE;
+  --r-s:7px; --r-m:10px; --r-l:14px;
+  --font:"Instrument Sans", ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--canvas);color:var(--ink);font-size:14px;line-height:1.45;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
+button,input,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:5px}
+.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;flex:none}
+
+/* ---------- Sidebar ---------- */
+.side{background:var(--surface);border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;gap:20px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px}
+.mark{width:28px;height:28px;border-radius:8px;background:linear-gradient(140deg,#C77DFF,var(--accent) 55%,var(--accent-ink));display:grid;place-items:center;box-shadow:0 4px 12px -6px rgba(161,0,255,.5)}
+.brand b{font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+.brand span{display:block;font-size:12px;color:var(--muted)}
+.group-label{font-size:12px;color:var(--muted);padding:0 10px 6px;display:flex;align-items:center;gap:8px}
+.group-label b{color:var(--ink);font-weight:600}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav button{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r-s);color:var(--ink-2);font-weight:500;text-align:left;position:relative}
+.nav button:hover{background:var(--canvas)}
+.nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent-ink)}
+.nav button[aria-current="page"]::before{content:"";position:absolute;left:-12px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--accent)}
+.nav .meta{margin-left:auto;font-size:12px;color:var(--muted)}
+.nav .live{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:12px;color:var(--accent-ink)}
+.claim-group{border-top:1px solid var(--line-2);padding-top:16px}
+.user{margin-top:auto;display:flex;gap:10px;align-items:center;padding:4px 8px;font-size:13px}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center;font-weight:600;font-size:12px}
+
+/* ---------- Top bar ---------- */
+main{min-width:0}
+.top{height:56px;display:flex;align-items:center;gap:14px;padding:0 28px;position:sticky;top:0;z-index:20;background:rgba(251,246,255,.97);border-bottom:1px solid rgba(227,208,250,.6);backdrop-filter:blur(10px)}
+.crumbs{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.crumbs button{color:var(--muted);padding:2px 4px;border-radius:4px}
+.crumbs button:hover{color:var(--ink);background:rgba(0,0,0,.04)}
+.crumbs b{color:var(--ink);font-weight:600;padding:2px 4px}
+.search{margin-left:auto;display:flex;align-items:center;gap:8px;border:1px solid var(--accent-line);border-radius:var(--r-s);padding:6px 10px;width:320px;color:var(--muted);font-size:13px;background:rgba(255,255,255,.85)}
+.kbd{display:inline-block;border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:11px;background:var(--surface);color:var(--muted);line-height:18px}
+.search .kbd{margin-left:auto}
+.bell{position:relative;width:34px;height:34px;display:grid;place-items:center;border-radius:8px;color:var(--ink-2)}
+.bell:hover{background:rgba(0,0,0,.04)}
+.bell .d{position:absolute;top:7px;right:8px;width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px #FBF6FF}
+
+/* ---------- Page + hero ---------- */
+.page{display:none;padding:0 28px 40px}
+.page.on{display:block}
+.hero{margin:0 -28px 22px;padding:24px 28px 20px;position:relative;
+  background:radial-gradient(760px 300px at 94% -20%,rgba(184,92,255,.30),transparent 70%),radial-gradient(560px 260px at 60% -70%,rgba(255,140,210,.18),transparent 70%),linear-gradient(180deg,#FBF6FF 0%,#F2E8FF 70%,#F1ECF8 100%)}
+.hero::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:linear-gradient(90deg,transparent,rgba(161,0,255,.2),transparent)}
+.hero-row{display:flex;align-items:flex-start;gap:16px}
+.hero-row .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+h1{font-size:22px;font-weight:600;letter-spacing:-.02em}
+h1 .who{font-weight:500;color:var(--ink-2)}
+.sub{color:var(--muted);margin-top:3px;font-size:13.5px}
+.meta-line{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin-top:4px}
+.meta-line b{color:var(--ink-2);font-weight:500}
+
+/* Case stepper */
+.stepper{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:18px}
+.stepper button{display:flex;align-items:center;gap:10px;text-align:left;padding:10px 12px;border-radius:var(--r-m);background:rgba(255,255,255,.6);border:1px solid rgba(227,208,250,.8)}
+.stepper button:hover{background:#fff}
+.stepper button.cur{background:#fff;border-color:var(--accent);box-shadow:0 0 0 3px rgba(161,0,255,.08)}
+.stepper .c{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11.5px;font-weight:600;border:1.5px solid var(--line);color:var(--muted);background:#fff;flex:none}
+.stepper .done .c{background:var(--low);border-color:var(--low);color:#fff}
+.stepper .live .c{border-color:var(--accent);border-top-color:transparent;animation:spin .9s linear infinite}
+.stepper .ready .c{background:var(--accent);border-color:var(--accent);color:#fff}
+.stepper b{display:block;font-weight:600;font-size:13px}
+.stepper small{display:block;font-size:12px;color:var(--muted);line-height:1.3}
+.stepper .live small{color:var(--accent-ink)}
+
+/* ---------- Primitives ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:8px 14px;border-radius:var(--r-s);font-weight:500;border:1px solid var(--line);background:var(--surface);white-space:nowrap}
+.btn:hover{border-color:#CFCBDA}
+.btn.primary{background:linear-gradient(135deg,#B53DFF,var(--accent) 55%,#8A00DB);color:#fff;border-color:var(--accent);box-shadow:0 6px 16px -10px rgba(161,0,255,.8)}
+.btn.primary:hover{background:var(--accent-ink)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--ink-2)}
+.btn.ghost:hover{background:rgba(0,0,0,.04)}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn.danger{color:var(--high);border-color:#EFC7CB}
+.hero .btn:not(.primary){background:rgba(255,255,255,.75);border-color:var(--accent-line)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap;align-self:start}
+.pill.high{background:var(--high-soft);color:var(--high)} .pill.ok{background:var(--low-soft);color:var(--low)} .pill.med{background:var(--med-soft);color:var(--med)} .pill.acc{background:var(--accent-soft);color:var(--accent-ink)} .pill.plain{background:var(--line-2);color:var(--ink-2)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.dot.pulse{animation:pulse 1.4s ease-in-out infinite}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-l);overflow:hidden}
+.panel-h{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line)}
+.panel-h h2{font-size:15px;font-weight:600}
+.panel-h .right{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{50%{opacity:.3}}
+@keyframes sh{to{background-position:-200% 0}}
+@keyframes flash{0%{background:#F4EAFF}100%{background:transparent}}
+
+/* ---------- Queue ---------- */
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,220px));gap:10px;margin-top:18px}
+.tiles button{background:rgba(255,255,255,.72);border:1px solid #ECE1F9;border-radius:12px;padding:12px 16px;text-align:left;display:flex;align-items:baseline;gap:10px}
+.tiles button:hover{background:#fff}
+.tiles button[aria-pressed="true"]{background:#fff;border-color:var(--accent);box-shadow:0 0 0 3px rgba(161,0,255,.08)}
+.tiles .n{font-size:26px;font-weight:600;letter-spacing:-.02em}
+.tiles .l{color:var(--muted);font-size:13px}
+.tiles .pip{width:9px;height:9px;border-radius:3px;align-self:center}
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.seg{display:inline-flex;background:#E9E6F0;border-radius:8px;padding:3px}
+.seg button{padding:5px 12px;border-radius:6px;color:var(--ink-2);font-weight:500;font-size:13px}
+.seg button.on{background:var(--surface);color:var(--accent-ink);box-shadow:0 1px 2px rgba(16,24,40,.08)}
+.chip{padding:5px 11px;border:1px solid var(--line);border-radius:999px;font-size:13px;color:var(--ink-2);background:var(--surface)}
+.chip.on{border-color:var(--accent-line);color:var(--accent-ink);background:var(--accent-soft)}
+.toolbar .sort{margin-left:auto;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:18px;align-items:start}
+.row{display:grid;grid-template-columns:24px 100px minmax(130px,1.4fr) 70px 80px 60px 124px;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line-2);position:relative}
+.row.h{padding:10px 16px;color:var(--muted);font-size:12.5px;font-weight:500;background:#FAF9FC}
+.row.h .sorted{color:var(--ink);display:inline-flex;gap:4px;align-items:center}
+.row:not(.h){cursor:pointer}
+.row:not(.h):hover{background:#FBFAFD}
+.row.sel{background:#FAF5FF;box-shadow:inset 3px 0 0 var(--accent)}
+.row:last-child{border-bottom:0}
+.cid{font-weight:600}
+.ctype{display:block;font-size:12px;color:var(--muted);font-weight:400}
+.name{font-weight:500}
+.veh{color:var(--muted);font-size:13px}
+.flags{display:flex;gap:10px;color:var(--ink-2);font-size:13px}
+.flags span{display:inline-flex;align-items:center;gap:4px}
+.flags svg{width:13px;height:13px}
+.due{font-size:13px;color:var(--ink-2)}
+.due.late{color:var(--high);font-weight:500}
+.risk{display:flex;align-items:center;gap:8px}
+.risk b{font-weight:600}
+.meter{display:flex;gap:2px}
+.meter i{width:5px;height:14px;border-radius:1.5px;background:var(--line)}
+.risk.high b{color:var(--high)} .risk.high .meter i.f{background:var(--high)}
+.risk.med b{color:var(--med)} .risk.med .meter i.f{background:var(--med)}
+.risk.low b{color:var(--ink-2)} .risk.low .meter i.f{background:#A09CB0}
+.cb{width:16px;height:16px;border:1.5px solid #C8C4D3;border-radius:4px;display:grid;place-items:center;background:#fff}
+.cb[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
+.cb[aria-checked="true"]::after{content:"";width:8px;height:4px;border:2px solid #fff;border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.table-foot{display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--line-2);font-size:12.5px;color:var(--muted);background:#FAF9FC}
+.bulk{position:sticky;bottom:18px;margin-top:12px;display:none;align-items:center;gap:10px;background:var(--ink);color:#fff;border-radius:12px;padding:10px 12px 10px 18px;box-shadow:0 16px 40px -16px rgba(22,21,29,.5);width:fit-content}
+.bulk.on{display:flex}
+.bulk .btn{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.16);color:#fff}
+.bulk .btn:hover{background:rgba(255,255,255,.16)}
+.preview{background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:var(--r-l);padding:20px;position:sticky;top:76px}
+.preview h2{font-size:18px;font-weight:600;letter-spacing:-.01em;margin-top:12px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:16px 0;font-size:13px}
+.kv dt{color:var(--muted)} .kv dd{text-align:right;font-weight:500}
+.why{border-top:1px solid var(--line);padding-top:14px}
+.why h3{font-size:13px;font-weight:600;margin-bottom:6px}
+.why li{list-style:none;display:flex;gap:10px;padding:5px 0;font-size:13px;color:var(--ink-2)}
+.why li i{width:6px;height:6px;border-radius:50%;background:var(--high);margin-top:7px;flex:none}
+.why li.m i{background:var(--med)}
+.preview .actions{display:flex;gap:8px;margin-top:16px}
+.preview .actions .btn{flex:1}
+.agent-note{margin-top:14px;display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:var(--r-m);background:var(--accent-soft);font-size:13px;color:var(--accent-ink)}
+
+/* ---------- Workspace ---------- */
+.work{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:18px;align-items:start}
+.minibar{display:flex;gap:3px;width:120px}
+.minibar i{flex:1;height:5px;border-radius:3px;background:var(--line-2)}
+.minibar .p{background:#43B581}.minibar .f{background:var(--high)}.minibar .r{background:#E0A43A}
+.progress{height:4px;background:var(--line-2);border-radius:2px;overflow:hidden;width:120px}
+.progress i{display:block;height:100%;background:linear-gradient(90deg,#C77DFF,var(--accent));width:0;transition:width .5s ease}
+.steps{list-style:none}
+.step{border-bottom:1px solid var(--line-2)}
+.step:last-child{border-bottom:0}
+.step-h{display:grid;grid-template-columns:24px 1fr auto 16px;gap:12px;padding:13px 20px;align-items:start;width:100%;text-align:left}
+.step-h:hover{background:#FCFBFE}
+.step.flash .step-h{animation:flash 1.6s ease}
+.ic{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--line);margin-top:1px}
+.ic svg{width:12px;height:12px;stroke-width:2.4;fill:none}
+.pass .ic{background:var(--low-soft);border-color:transparent} .pass .ic svg{stroke:var(--low)}
+.fail .ic{background:var(--high-soft);border-color:transparent} .fail .ic svg{stroke:var(--high)}
+.rev .ic{background:var(--med-soft);border-color:transparent} .rev .ic svg{stroke:var(--med);color:var(--med)}
+.run .ic{border-color:var(--accent);border-top-color:transparent;animation:spin .8s linear infinite}
+.wait{color:var(--muted)}
+.step .t{font-weight:600}
+.step.wait .t{font-weight:500}
+.step p{color:var(--muted);font-size:13px;margin-top:2px;max-width:70ch}
+.res{font-size:12.5px;font-weight:500;padding-top:2px}
+.pass .res{color:var(--low)} .fail .res{color:var(--high)} .rev .res{color:var(--med)} .run .res{color:var(--accent-ink)}
+.chev{width:16px;height:16px;color:var(--muted);transition:transform .2s;margin-top:3px}
+.step-h[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.step-body{display:none;padding:0 20px 16px 56px}
+.step-h[aria-expanded="true"]+.step-body{display:block}
+.evid{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;font-size:13px;background:#FAF9FC;border:1px solid var(--line-2);border-radius:var(--r-m);padding:12px 14px}
+.evid dt{color:var(--muted)} .evid dd{color:var(--ink-2)}
+.step-body .links{display:flex;gap:6px;margin-top:10px}
+.skel{height:8px;width:220px;border-radius:4px;background:linear-gradient(90deg,var(--line-2),#F9F8FB,var(--line-2));background-size:200% 100%;animation:sh 1.4s infinite;margin-top:8px}
+.done-banner{display:none;align-items:center;gap:14px;padding:14px 20px;background:var(--accent-soft);border-top:1px solid var(--accent-line)}
+.done-banner.on{display:flex}
+.done-banner p{margin-right:auto;font-size:13.5px;color:var(--accent-ink)}
+.foot{display:flex;align-items:center;gap:10px;padding:14px 20px;border-top:1px solid var(--line);background:#FAF9FC}
+.foot .lbl{font-size:13px;color:var(--muted);margin-right:auto}
+.cta-strip{display:flex;align-items:center;gap:16px;padding:16px 20px;border-top:1px solid var(--accent-line);background:linear-gradient(120deg,#FBF7FF 0%,#F3E9FF 100%)}
+.cta-strip div{margin-right:auto}
+.cta-strip b{font-weight:600;color:var(--accent-ink)}
+.cta-strip p{font-size:13px;color:var(--ink-2);max-width:54ch;margin-top:2px}
+
+/* Chat */
+.chat{display:flex;flex-direction:column;height:calc(100vh - 56px - 210px);min-height:520px;position:sticky;top:76px}
+.msgs{flex:1;overflow:auto;padding:18px 20px;display:flex;flex-direction:column;gap:16px}
+.msg{max-width:92%;font-size:13.5px}
+.msg.me{align-self:flex-end;background:linear-gradient(135deg,#B53DFF,#8A00DB);color:#fff;padding:9px 13px;border-radius:12px 12px 4px 12px}
+.msg.ai p{color:var(--ink-2)}
+.msg.ai p+p{margin-top:8px}
+.msg .who{font-size:12px;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;gap:7px}
+.msg .who .m{width:18px;height:18px;border-radius:5px;background:linear-gradient(140deg,#C77DFF,var(--accent));display:inline-grid;place-items:center}
+.cite{display:inline-flex;font-size:11.5px;padding:0 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent-ink);font-weight:500;margin-left:2px;line-height:18px}
+button.cite:hover{background:#EAD7FF}
+.msg .fb{display:flex;gap:2px;margin-top:6px}
+.msg .fb button{font-size:12px;color:var(--muted);padding:2px 6px;border-radius:4px}
+.msg .fb button:hover{background:var(--canvas);color:var(--ink)}
+.side-card{margin-top:10px;border:1px solid var(--line);border-radius:var(--r-m);padding:12px;font-size:13px}
+.side-card b{font-weight:600}
+.side-card .l{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line-2);color:var(--ink-2)}
+.side-card .l:first-of-type{border-top:0;margin-top:6px}
+.suggest{display:flex;gap:6px;flex-wrap:wrap;padding:0 20px 12px}
+.suggest button{border:1px solid var(--line);border-radius:999px;padding:5px 10px;font-size:12.5px;color:var(--ink-2)}
+.suggest button:hover{border-color:var(--accent-line);color:var(--accent-ink);background:var(--accent-soft)}
+.composer{border-top:1px solid var(--line);padding:12px;display:flex;gap:8px}
+.composer input{flex:1;border:1px solid var(--line);border-radius:var(--r-s);padding:9px 12px;background:var(--canvas)}
+.composer input:focus{outline:2px solid var(--accent);outline-offset:-1px;background:#fff}
+.decision{display:flex;align-items:center;gap:8px;padding:14px 20px;border-top:1px solid var(--line);background:#FAF9FC}
+.decision .lbl{font-size:13px;color:var(--muted);margin-right:auto}
+
+/* ---------- Investigation ---------- */
+.inv{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:18px;align-items:start}
+.flow{padding:24px 24px 8px}
+.nodes{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;position:relative}
+.node{position:relative;padding:14px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);min-height:96px}
+.node::after{content:"";position:absolute;right:-29px;top:48px;width:28px;height:1.5px;background:var(--line)}
+.node:last-child::after{display:none}
+.node small{color:var(--muted);font-size:12px}
+.node b{display:block;font-weight:600;margin-top:2px}
+.node .st{margin-top:10px;font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.node.done{border-color:#CBE5D6} .node.done .st{color:var(--low)}
+.node.live{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)} .node.live .st{color:var(--accent-ink)} .node.live b{color:var(--accent-ink)}
+.node.live::after{background:var(--accent)}
+.node.hold{border-color:var(--med-line);background:#FFFCF6} .node.hold .st{color:var(--med)}
+.loopback{position:relative;height:66px}
+.loopback svg{position:absolute;left:0;top:0;width:100%;height:44px;overflow:visible}
+.loopback span{position:absolute;left:37.5%;width:25%;text-align:center;bottom:0;font-size:12px;color:var(--med);font-weight:500}
+.passes{border-top:1px solid var(--line);padding:16px 24px}
+.passes h3,.steer h3{font-size:13px;font-weight:600;margin-bottom:10px}
+.pass-row{display:grid;grid-template-columns:60px 1fr 90px;gap:12px;padding:8px 0;font-size:13px;border-bottom:1px dashed var(--line)}
+.pass-row:last-child{border:0}
+.pass-row .k{color:var(--muted)}
+.pass-row .s{text-align:right}
+.evidence{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line)}
+.evidence div{padding:14px 24px;border-right:1px solid var(--line)}
+.evidence div:last-child{border:0}
+.evidence small{color:var(--muted);font-size:12.5px}
+.evidence b{display:block;font-size:20px;font-weight:600;letter-spacing:-.02em;margin-top:2px}
+.steer{border-top:1px solid var(--line);padding:16px 24px 20px;background:#FCFAFF}
+.steer p{font-size:13px;color:var(--muted);margin:-4px 0 10px}
+.steer .composer{padding:0;border:0}
+.log{list-style:none;max-height:620px;overflow:auto}
+.log>li{display:grid;grid-template-columns:54px 1fr;gap:12px;padding:10px 20px;font-size:13px;border-bottom:1px solid var(--line-2)}
+.log time{color:var(--muted);font-size:12px;padding-top:1px}
+.log .agent{font-weight:600}
+.log li.hold{background:#FFFBF3;box-shadow:inset 3px 0 0 #E0A43A}
+.log li.hold .agent{color:var(--med)}
+.log li.hold ul{margin:6px 0 0 16px;color:var(--ink-2);list-style:disc}
+.log li.hold ul li{padding:1px 0}
+.log li.now .txt::after{content:"";display:inline-block;width:5px;height:13px;background:var(--accent);margin-left:3px;vertical-align:-2px;animation:pulse 1s steps(1) infinite}
+.log li.steered{background:var(--accent-soft)}
+.log li.steered .agent{color:var(--accent-ink)}
+
+/* ---------- Dossier ---------- */
+.doss{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px;align-items:start}
+.memo{padding:30px 38px;border-top:3px solid var(--accent)}
+.memo h2{font-size:20px;font-weight:600;letter-spacing:-.015em;margin-top:14px;max-width:34ch}
+.memo .lead{font-size:15px;color:var(--ink-2);margin:10px 0 22px;max-width:66ch;line-height:1.55}
+.memo h3{font-size:14px;font-weight:600;margin:22px 0 8px}
+.finding{display:grid;grid-template-columns:22px 1fr auto;gap:12px;padding:12px 0;border-top:1px solid var(--line-2);font-size:13.5px;align-items:start}
+.finding .n{color:var(--muted)}
+.finding b{font-weight:500}
+.finding p{color:var(--muted);margin-top:2px;font-size:13px}
+.finding .src{margin-top:6px;display:flex;gap:6px}
+.finding .src button{font-size:12px;color:var(--accent-ink);text-decoration:underline;text-decoration-color:var(--accent-line);text-underline-offset:3px}
+.gap{border:1px solid var(--med-line);background:var(--med-soft);border-radius:var(--r-m);padding:14px 16px;font-size:13.5px;display:flex;gap:16px;align-items:center}
+.gap b{color:var(--med)}
+.gap p{color:var(--ink-2);margin-top:2px}
+.gap div{margin-right:auto}
+.aside-card{padding:18px}
+.aside-card h3{font-size:13.5px;font-weight:600;margin-bottom:10px}
+.ring{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+.ring svg{width:56px;height:56px}
+.checks li{list-style:none;display:flex;justify-content:space-between;padding:7px 0;font-size:13px;border-bottom:1px solid var(--line-2)}
+.checks li:last-child{border:0}
+.note{width:100%;min-height:74px;resize:vertical;border:1px solid var(--line);border-radius:var(--r-s);padding:9px 11px;font-size:13px;background:var(--canvas);margin-bottom:10px}
+.note:focus{outline:2px solid var(--accent);outline-offset:-1px;background:#fff}
+.hint{font-size:12px;color:var(--muted);margin:-4px 0 10px}
+
+/* ---------- Dialog + toast ---------- */
+.scrim{position:fixed;inset:0;background:rgba(22,21,29,.32);display:none;place-items:center;z-index:50;backdrop-filter:blur(2px)}
+.scrim.on{display:grid}
+.dialog{background:#fff;border-radius:16px;width:min(440px,92vw);padding:22px;box-shadow:0 30px 80px -20px rgba(22,21,29,.45)}
+.dialog h2{font-size:17px;font-weight:600}
+.dialog p{color:var(--muted);font-size:13.5px;margin:6px 0 14px}
+.dialog .row-b{display:flex;justify-content:flex-end;gap:8px}
+.toast{position:fixed;bottom:22px;right:22px;transform:translateY(20px);opacity:0;background:var(--ink);color:#fff;padding:10px 14px 10px 16px;border-radius:10px;display:flex;align-items:center;gap:12px;font-size:13.5px;transition:all .25s ease;z-index:60;pointer-events:none}
+.toast.on{opacity:1;transform:translateY(0);pointer-events:auto}
+.toast button{color:#D9B3FF;font-weight:500}
+
+@media (max-width:1300px){.row{grid-template-columns:24px 104px minmax(140px,1fr) 84px 118px}.row>:nth-child(4),.row>:nth-child(7){display:none}}
+@media (max-width:1100px){.split,.work,.inv,.doss{grid-template-columns:1fr}.preview,.chat{position:static}.chat{height:560px}}
+@media (max-width:760px){.app{grid-template-columns:1fr}.side{position:static;height:auto}.claim-group,.user{display:none}.search{display:none}.stepper,.nodes{grid-template-columns:1fr 1fr}.node::after,.loopback{display:none}.tiles{grid-template-columns:1fr 1fr 1fr}.row{grid-template-columns:24px 1fr 1fr}.row>:nth-child(5),.row>:nth-child(6){display:none}.row.h{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4h11l-2 4 2 4H5"/></symbol>
+  <symbol id="i-task" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 9h6M9 13h6"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4-4"/></symbol>
+</svg>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="mark"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 11l3.5-4 3 3L14 4" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div><b>Claims Co-Pilot</b><span>Auto claims</span></div>
+    </div>
+    <nav class="nav" aria-label="Workspace">
+      <button data-go="queue" aria-current="page"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Queue<span class="meta">45</span></button>
+    </nav>
+    <div class="claim-group">
+      <div class="group-label"><b>COL-107</b>Matthew Garcia</div>
+      <nav class="nav" aria-label="Current claim">
+        <button data-go="running"><svg class="i" viewBox="0 0 24 24"><path d="M9 11l3 3 8-8M20 12v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1h11"/></svg>Checklist<span class="meta" id="navRun"></span></button>
+        <button data-go="copilot"><svg class="i" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>Copilot</button>
+        <button data-go="investigate"><svg class="i" viewBox="0 0 24 24"><use href="#i-search"/></svg>Investigation<span class="live"><span class="dot pulse"></span>Live</span></button>
+        <button data-go="dossier"><svg class="i" viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7zM14 3v5h5"/></svg>Dossier<span class="meta">Draft</span></button>
+      </nav>
+    </div>
+    <div class="user"><div class="avatar">AR</div><div>Alex Rivera<br><span style="color:var(--muted);font-size:12px">Senior examiner</span></div></div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+      <div class="search" role="button" tabindex="0"><svg class="i" style="width:14px;height:14px" viewBox="0 0 24 24"><use href="#i-search"/></svg>Search claims, members, shops<span class="kbd">⌘K</span></div>
+      <button class="bell" aria-label="Notifications, 1 new"><svg class="i" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15zM10 20a2 2 0 004 0"/></svg><span class="d"></span></button>
+    </header>
+
+    <!-- 1 QUEUE -->
+    <section class="page on" id="queue">
+      <div class="hero">
+        <div class="hero-row">
+          <div><h1>Claims queue</h1><p class="sub">45 open · sorted by risk · updated 2 min ago</p></div>
+          <div class="right"><button class="btn" onclick="toast('Queue refreshed')"><svg class="i" viewBox="0 0 24 24"><path d="M4 12a8 8 0 0114-5.3M20 12a8 8 0 01-14 5.3M18 3v4h-4M6 21v-4h4"/></svg>Refresh</button></div>
+        </div>
+        <div class="tiles" role="group" aria-label="Filter by risk">
+          <button data-risk="high" aria-pressed="false"><span class="pip" style="background:var(--high)"></span><span class="n">4</span><span class="l">High risk</span></button>
+          <button data-risk="med" aria-pressed="false"><span class="pip" style="background:#E0A43A"></span><span class="n">3</span><span class="l">Medium</span></button>
+          <button data-risk="low" aria-pressed="false"><span class="pip" style="background:#A09CB0"></span><span class="n">38</span><span class="l">Low</span></button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="seg"><button>Today 1</button><button>This week 4</button><button class="on">All 45</button></div>
+        <span style="width:6px"></span>
+        <button class="chip on">All types</button><button class="chip">Collision</button><button class="chip">Comprehensive</button><button class="chip">Theft</button><button class="chip">Liability</button><button class="chip">Medical pay</button>
+        <span class="sort">Sort <button class="btn sm">Risk, high first<svg class="i" style="width:14px" viewBox="0 0 24 24"><use href="#i-chev"/></svg></button></span>
+      </div>
+      <div class="split">
+        <div>
+          <div class="panel" role="grid" aria-label="Claims">
+            <div class="row h" role="row"><span></span><span>Claim</span><span>Member · vehicle</span><span>Signals</span><span>Due</span><span class="sorted">Risk<svg class="i" style="width:12px" viewBox="0 0 24 24"><use href="#i-chev"/></svg></span><span>State</span></div>
+            <div id="rows"></div>
+            <div class="table-foot"><span><span class="kbd">J</span> <span class="kbd">K</span> move</span><span><span class="kbd">Enter</span> open</span><span><span class="kbd">X</span> select</span><span style="margin-left:auto">Showing 8 of 45</span></div>
+          </div>
+          <div class="bulk" id="bulk"><span id="bulkN">0 selected</span><button class="btn sm" onclick="toast('Checklist started for selected claims')">Run checklist</button><button class="btn sm">Assign</button><button class="btn sm" onclick="clearSel()">Clear</button></div>
+        </div>
+        <aside class="preview" id="preview" aria-live="polite"></aside>
+      </div>
+    </section>
+
+    <!-- 2 CHECKLIST RUNNING -->
+    <section class="page" id="running">
+      <div class="hero" data-hero="running"></div>
+      <div class="work">
+        <div class="panel">
+          <div class="panel-h"><h2>Examiner checklist</h2><div class="right"><span id="runLabel">Step 1 of 7</span><div class="progress"><i id="runBar"></i></div></div></div>
+          <ol class="steps" id="runSteps"></ol>
+          <div class="done-banner" id="doneBanner"><p><b>Checklist finished.</b> 4 passed, 2 need review, 1 failed.</p><button class="btn primary" data-go="copilot">See results</button></div>
+          <div class="foot" id="runFoot"><span class="lbl">Runs in the background. You can leave this page — we'll notify you when it's done.</span><button class="btn">Cancel run</button></div>
+        </div>
+        <div class="panel chat">
+          <div class="panel-h"><h2>Copilot</h2><div class="right">Watching this run</div></div>
+          <div class="msgs">
+            <div class="msg me">Run the full checklist</div>
+            <div class="msg ai"><div class="who"><span class="m"></span>Copilot</div><p>Running all seven checks against the claim file, policy records and repair-shop registry. Results fill in on the left, usually within 30 seconds.</p>
+              <div class="side-card"><b>While this runs</b><div class="l"><span>Other open claims from this shop</span><span>2</span></div><div class="l"><span>Matthew's claims in 4 years</span><span>6</span></div><div class="l"><span>Similar F-150 estimates, median</span><span>$11,940</span></div></div>
+            </div>
+          </div>
+          <div class="composer"><input placeholder="Ask while it runs…" aria-label="Message Copilot"><button class="btn primary">Send</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 COPILOT RESULTS -->
+    <section class="page" id="copilot">
+      <div class="hero" data-hero="copilot"></div>
+      <div class="work">
+        <div class="panel">
+          <div class="panel-h"><h2>Examiner checklist</h2><div class="right"><div class="minibar" aria-hidden="true"><i class="p"></i><i class="p"></i><i class="p"></i><i class="f"></i><i class="r"></i><i class="p"></i><i class="r"></i></div><span class="pill ok">4 passed</span><span class="pill med">2 review</span><span class="pill high">1 failed</span></div></div>
+          <ol class="steps" id="resSteps"></ol>
+          <div class="cta-strip"><div><b>Two checks need evidence the checklist can't gather.</b><p>Copilot can investigate the shop, Matthew's history and the estimate, then draft a dossier. It stops for your review before anything is decided.</p></div><button class="btn primary" data-go="investigate"><svg class="i" viewBox="0 0 24 24"><use href="#i-search"/></svg>Start investigation</button></div>
+          <div class="decision"><span class="lbl">Ready to decide now?</span><button class="btn" data-decide="Approve">Approve</button><button class="btn" data-decide="Deny">Deny</button><button class="btn danger" data-decide="Refer to SIU">Refer to SIU</button></div>
+        </div>
+        <div class="panel chat">
+          <div class="panel-h"><h2>Copilot</h2><div class="right">Answers cite their source</div></div>
+          <div class="msgs">
+            <div class="msg me">Why is this flagged so high?</div>
+            <div class="msg ai"><div class="who"><span class="m"></span>Copilot</div>
+              <p>Three signals stack up. The estimate exceeds the truck's value by $7,393.85<button class="cite" data-cite="3">Check 4</button>, the shop has been on the watchlist since March<button class="cite" data-cite="4">Check 5</button>, and this is Matthew's sixth claim in four years<span class="cite">History</span>.</p>
+              <p>None of these proves fraud alone. Together they explain the 98.4 score.</p>
+              <div class="fb"><button onclick="toast('Thanks — feedback saved')">Helpful</button><button onclick="toast('Thanks — we\'ll use this to improve')">Not helpful</button><button onclick="toast('Copied')">Copy</button></div></div>
+            <div class="msg me">What would you do next?</div>
+            <div class="msg ai"><div class="who"><span class="m"></span>Copilot</div><p>Get an independent appraisal first. If it lands near the truck's value, this becomes a total-loss conversation rather than a fraud one<button class="cite" data-cite="6">Check 7</button>.</p></div>
+          </div>
+          <div class="suggest"><button>Compare to similar claims</button><button>Show prior claims</button><button>Draft appraisal request</button></div>
+          <div class="composer"><input placeholder="Ask about this claim…" aria-label="Message Copilot"><button class="btn primary">Send</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 INVESTIGATION -->
+    <section class="page" id="investigate">
+      <div class="hero" data-hero="investigate"></div>
+      <div class="inv">
+        <div class="panel">
+          <div class="panel-h"><h2>Agent flow</h2><div class="right">Pass 3 of up to 5 · 16s</div></div>
+          <div class="flow">
+            <div class="nodes">
+              <div class="node done"><small>Plans the work</small><b>Orchestrator</b><div class="st"><span class="dot"></span>Routed pass 3</div></div>
+              <div class="node live"><small>Gathers evidence</small><b>Investigator</b><div class="st"><span class="dot pulse"></span>Comparing shop invoices</div></div>
+              <div class="node hold"><small>Tests the evidence</small><b>Case writer</b><div class="st"><span class="dot"></span>Holding: 2 gaps</div></div>
+              <div class="node"><small>Final say</small><b>You</b><div class="st"><span class="dot" style="background:var(--line)"></span>Waiting for dossier</div></div>
+            </div>
+            <div class="loopback" aria-hidden="true">
+              <svg viewBox="0 0 100 54" preserveAspectRatio="none"><path d="M62.5 0 V30 Q62.5 40 56 40 H44 Q37.5 40 37.5 30 V4" fill="none" stroke="#E0A43A" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-dasharray="4 4"/><path d="M36.3 8 L37.5 2 L38.7 8" fill="none" stroke="#E0A43A" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
+              <span>Sent back with 2 gaps</span>
+            </div>
+          </div>
+          <div class="passes">
+            <h3>Passes</h3>
+            <div class="pass-row"><span class="k">Pass 1</span><span>Pulled claim file, policy and member history</span><span class="s" style="color:var(--low)">Complete</span></div>
+            <div class="pass-row"><span class="k">Pass 2</span><span>Case writer held the dossier: estimate unverified, shop link unconfirmed</span><span class="s" style="color:var(--med)">2 gaps</span></div>
+            <div class="pass-row"><span class="k">Pass 3</span><span>Comparing SHP-007 invoices against Matthew's prior claims</span><span class="s" style="color:var(--accent-ink)">Running</span></div>
+          </div>
+          <div class="evidence"><div><small>Sources checked</small><b>12</b></div><div><small>Findings</small><b>4</b></div><div><small>Open gaps</small><b style="color:var(--med)">2</b></div></div>
+          <div class="steer">
+            <h3>Steer the investigation</h3>
+            <p>Add context or redirect focus. The orchestrator picks it up on the next pass.</p>
+            <div class="composer"><input id="steerIn" placeholder="e.g. Also check the tow company on the incident report" aria-label="Instruction for the investigation"><button class="btn primary" onclick="steer()">Send to agents</button></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2>Activity</h2><div class="right"><span class="pill acc"><span class="dot pulse"></span>Live</span></div></div>
+          <ul class="log" id="log">
+            <li><time>2:35:17</time><div><span class="agent">Orchestrator</span> started pass 1 for Matthew Garcia</div></li>
+            <li><time>2:35:20</time><div><span class="agent">Investigator</span> pulled policy and 6 prior claims</div></li>
+            <li><time>2:35:26</time><div><span class="agent">Investigator</span> matched SHP-007 to 2 earlier claims by this member</div></li>
+            <li><time>2:35:28</time><div><span class="agent">Orchestrator</span> sent 4 findings to the case writer</div></li>
+            <li class="hold"><time>2:35:31</time><div><span class="agent">Case writer</span> held the dossier — 2 of 6 required checks not met yet:<ul><li>Proof the estimate is inflated, not just high</li><li>Line-item comparison with earlier SHP-007 claims</li></ul></div></li>
+            <li><time>2:35:31</time><div><span class="agent">Orchestrator</span> started pass 3 targeting both gaps</div></li>
+            <li class="now"><time>2:35:33</time><div><span class="agent">Investigator</span> <span class="txt">requesting SHP-007 line-item history</span></div></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5 DOSSIER -->
+    <section class="page" id="dossier">
+      <div class="hero" data-hero="dossier"></div>
+      <div class="doss">
+        <article class="panel memo">
+          <span class="pill high">Recommendation: refer to SIU</span>
+          <h2>Likely inflated estimate through a watchlisted shop</h2>
+          <p class="lead">The damage is genuine; the price isn't. The estimate is 40% over the truck's value, and the same shop billed two of Matthew Garcia's earlier claims with largely overlapping line items.</p>
+          <h3>Findings</h3>
+          <div class="finding"><span class="n">1</span><div><b>Estimate is 1.4× vehicle value</b><p>$25,877.85 against an $18,484 ACV — $7,393.85 over.</p><div class="src"><button>Estimate PDF</button><button>ACV report</button></div></div><span class="pill high">Strong</span></div>
+          <div class="finding"><span class="n">2</span><div><b>Repeat use of the same shop</b><p>SHP-007 handled 3 of his 6 claims. Line items overlap 82% with his 2023 claim.</p><div class="src"><button>Invoice comparison</button><button>Claim history</button></div></div><span class="pill high">Strong</span></div>
+          <div class="finding"><span class="n">3</span><div><b>Shop is on the watchlist</b><p>Added March 2025 after a regional SIU referral.</p><div class="src"><button>Shop registry</button></div></div><span class="pill med">Moderate</span></div>
+          <div class="finding"><span class="n">4</span><div><b>Damage looks genuine</b><p>Front-end and driver-side impact match the report. Argues against staging.</p><div class="src"><button>Photo review</button></div></div><span class="pill ok">Mitigating</span></div>
+          <h3>Still open</h3>
+          <div class="gap"><div><b>No independent appraisal on file.</b><p>Copilot can't obtain one itself. It would confirm the inflation before SIU picks this up.</p></div><button class="btn" onclick="toast('Appraisal request drafted — review in Copilot')">Draft request</button></div>
+        </article>
+        <aside style="display:flex;flex-direction:column;gap:14px;position:sticky;top:76px">
+          <div class="panel aside-card">
+            <div class="ring"><svg viewBox="0 0 36 36"><defs><linearGradient id="rg" x1="0" x2="1"><stop offset="0" stop-color="#C77DFF"/><stop offset="1" stop-color="#7500C0"/></linearGradient></defs><circle cx="18" cy="18" r="15" fill="none" stroke="var(--line-2)" stroke-width="3.5"/><circle cx="18" cy="18" r="15" fill="none" stroke="url(#rg)" stroke-width="3.5" stroke-dasharray="78.5 94.2" stroke-linecap="round" transform="rotate(-90 18 18)"/></svg><div><b style="font-size:18px">5 of 6</b><div class="sub" style="margin:0">required checks met</div></div></div>
+            <ul class="checks"><li>Claim file complete<span style="color:var(--low)">Met</span></li><li>Coverage verified<span style="color:var(--low)">Met</span></li><li>Member history<span style="color:var(--low)">Met</span></li><li>Shop relationship<span style="color:var(--low)">Met</span></li><li>Damage review<span style="color:var(--low)">Met</span></li><li>Estimate forensics<span style="color:var(--med)">Open</span></li></ul>
+          </div>
+          <div class="panel aside-card">
+            <h3>Your decision</h3>
+            <textarea class="note" id="decNote" placeholder="Note for the claim file"></textarea>
+            <p class="hint">Required for SIU referrals and denials.</p>
+            <div style="display:grid;gap:8px"><button class="btn primary" data-decide="Refer to SIU">Refer to SIU</button><button class="btn" data-decide="Request appraisal">Request appraisal first</button><button class="btn ghost" data-decide="Approve">Approve anyway</button></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="scrim" id="scrim" role="dialog" aria-modal="true" aria-labelledby="dlgT">
+  <div class="dialog"><h2 id="dlgT"></h2><p id="dlgP"></p><textarea class="note" id="dlgNote" placeholder="Note for the claim file"></textarea><div class="row-b"><button class="btn" onclick="closeDlg()">Cancel</button><button class="btn primary" id="dlgGo"></button></div></div>
+</div>
+<div class="toast" id="toast" role="status"><span id="toastT"></span><button id="toastA" style="display:none"></button></div>
+
+<script>
+/* ---------- Data ---------- */
+const claims=[
+ {id:"COL-107",type:"Collision",name:"Matthew Garcia",veh:"2018 Ford F-150",fl:3,tk:2,risk:98.4,due:"Today",late:true,state:"inv",est:"$25,877.85",acv:"$18,484.00",inc:"Nov 24, 2025",why:[["h","Estimate is 1.4× the vehicle's value"],["h","Repair shop is on the fraud watchlist"],["m","Member has 6 prior claims on file"]]},
+ {id:"COL-005",type:"Collision",name:"Michelle Williams",veh:"2019 Toyota RAV4",fl:0,tk:2,risk:92.7,due:"Today",late:true,state:"new",est:"$14,210.00",acv:"$21,300.00",inc:"Jan 8, 2026",why:[["h","Estimate not verified by an appraiser"],["m","2 open workflow tasks"]]},
+ {id:"THEFT-009",type:"Theft",name:"Jessica Rodriguez",veh:"2016 BMW 3 Series",fl:2,tk:1,risk:73,due:"Tomorrow",state:"new",est:"$19,800.00",acv:"$17,650.00",inc:"Dec 30, 2025",why:[["h","Reported 9 days after a coverage change"],["m","Same member as LIAB-002"]]},
+ {id:"LIAB-002",type:"Liability",name:"Jessica Rodriguez",veh:"2022 Nissan Altima",fl:2,tk:1,risk:73,due:"2 days",state:"new",est:"$8,420.00",acv:"$22,100.00",inc:"Dec 12, 2025",why:[["h","Same member as THEFT-009"],["m","Late notice of loss"]]},
+ {id:"THEFT-004",type:"Theft",name:"Matthew Garcia",veh:"2015 Subaru Outback",fl:2,tk:1,risk:39,due:"3 days",state:"new",est:"$12,300.00",acv:"$11,900.00",inc:"Oct 2, 2025",why:[["m","Member has 6 prior claims on file"]]},
+ {id:"LIAB-021",type:"Liability",name:"Emily Williams",veh:"2017 Nissan Altima",fl:2,tk:1,risk:39,due:"4 days",state:"new",est:"$5,120.00",acv:"$13,400.00",inc:"Jan 15, 2026",why:[["m","Late notice of loss"]]},
+ {id:"LIAB-006",type:"Liability",name:"Matthew Garcia",veh:"2015 Subaru Outback",fl:2,tk:3,risk:39,due:"5 days",state:"new",est:"$6,980.00",acv:"$11,900.00",inc:"Sep 20, 2025",why:[["m","3 open workflow tasks"]]},
+ {id:"COL-004",type:"Collision",name:"Matthew Garcia",veh:"2015 Subaru Outback",fl:1,tk:2,risk:26.5,due:"6 days",state:"new",est:"$3,450.00",acv:"$11,900.00",inc:"Aug 4, 2025",why:[["m","1 rule triggered"]]}
+];
+const steps=[
+ {t:"Initial review",r:"pass",d:"All required fields are present.",e:[["Fields checked","42 of 42"],["Source","Claim intake form"]]},
+ {t:"Damage documentation",r:"pass",d:"Repair estimate of $25,877.85 on file with 2 line items.",e:[["Estimate","$25,877.85 · 2 line items"],["Source","Estimate PDF, uploaded Nov 26"]]},
+ {t:"Coverage timeline",r:"pass",d:"Incident on Nov 24, 2025 falls inside the coverage period.",e:[["Coverage","May 15, 2025 – May 15, 2026"],["Source","Policy system"]]},
+ {t:"Estimate vs. vehicle value",r:"fail",d:"Estimate is 1.4× the vehicle's actual cash value ($18,484). The $7,393.85 excess needs a total-loss review before repair can be approved.",e:[["Ratio","1.40× (threshold 0.75×)"],["ACV source","Valuation service, Nov 25"]]},
+ {t:"Repair shop",r:"rev",d:"Discount Fender Fix (SHP-007) is on the fraud watchlist. Confirm the estimate with an independent appraiser.",e:[["Watchlisted","March 2025, regional SIU referral"],["Source","Shop registry"]]},
+ {t:"Policy status",r:"pass",d:"Policy is active and premiums are current.",e:[["Status","Active · paid through Feb 2026"],["Source","Billing system"]]},
+ {t:"Damage photos",r:"rev",d:"Front-end and driver-side damage looks consistent with a real collision. No signs of staging, but severity is high for the reported speed.",e:[["Photos reviewed","14"],["Reported speed","25 mph"]]}
+];
+const IC={pass:'<svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.3 2.3 4.7-5"/></svg>',fail:'<svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6"/></svg>',rev:'<svg viewBox="0 0 12 12"><path d="M6 2.5v4.2"/><circle cx="6" cy="9.3" r=".6" fill="currentColor" stroke="none"/></svg>'};
+const LBL={pass:"Passed",fail:"Failed",rev:"Review",run:"Checking…",wait:""};
+const lv=r=>r>=70?'high':r>=35?'med':'low';
+
+/* ---------- Queue ---------- */
+let sel=0,filter=null;const picked=new Set();
+function renderRows(){
+  const list=claims.map((c,i)=>[c,i]).filter(([c])=>!filter||lv(c.risk)===filter);
+  document.getElementById('rows').innerHTML=list.map(([c,i])=>{return `<div class="row${i===sel?' sel':''}" role="row" tabindex="0" data-i="${i}" aria-selected="${i===sel}">
+    <span class="cb" role="checkbox" aria-checked="${picked.has(i)}" aria-label="Select ${c.id}" data-pick="${i}"></span>
+    <span class="cid">${c.id}<span class="ctype">${c.type}</span></span>
+    <span><div class="name">${c.name}</div><div class="veh">${c.veh}</div></span>
+    <span class="flags">${c.fl?`<span title="Rules triggered"><svg class="i"><use href="#i-flag"/></svg>${c.fl}</span>`:''}<span title="Open tasks"><svg class="i"><use href="#i-task"/></svg>${c.tk}</span></span>
+    <span class="due${c.late?' late':''}">${c.due}</span>
+    <span class="risk ${lv(c.risk)}"><b>${c.risk}</b></span>
+    <span>${c.state==='inv'?'<span class="pill acc"><span class="dot pulse"></span>Investigating</span>':'<span class="pill plain">New</span>'}</span></div>`}).join('');
+  renderPreview();
+}
+function renderPreview(){
+  const c=claims[sel],l=lv(c.risk);
+  document.getElementById('preview').innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><span class="pill ${l==='low'?'plain':l}">${l==='high'?'High':l==='med'?'Medium':'Low'} risk · ${c.risk}</span><span class="veh">Due ${c.due.toLowerCase()}</span></div>
+  <h2>${c.id} · ${c.name}</h2><p class="sub">${c.veh} · ${c.type}</p>
+  <dl class="kv"><dt>Estimate</dt><dd>${c.est}</dd><dt>Vehicle ACV</dt><dd>${c.acv}</dd><dt>Incident</dt><dd>${c.inc}</dd></dl>
+  <div class="why"><h3>Why it's flagged</h3><ul>${c.why.map(w=>`<li class="${w[0]==='m'?'m':''}"><i></i>${w[1]}</li>`).join('')}</ul></div>
+  ${c.state==='inv'?'<div class="agent-note"><span class="dot pulse" style="margin-top:6px"></span><span>Copilot is investigating this claim — pass 3 of up to 5.</span></div>':''}
+  <div class="actions"><button class="btn primary" data-go="${c.state==='inv'?'copilot':'running'}">Open claim</button><button class="btn">Assign</button></div>`;
+}
+function updateBulk(){const b=document.getElementById('bulk');b.classList.toggle('on',picked.size>0);document.getElementById('bulkN').textContent=picked.size+' selected'}
+function clearSel(){picked.clear();renderRows();updateBulk()}
+document.getElementById('rows').addEventListener('click',e=>{
+  const pk=e.target.closest('[data-pick]');if(pk){const i=+pk.dataset.pick;picked.has(i)?picked.delete(i):picked.add(i);renderRows();updateBulk();return}
+  const r=e.target.closest('.row');if(r){sel=+r.dataset.i;renderRows()}
+});
+document.getElementById('rows').addEventListener('dblclick',e=>{if(e.target.closest('.row'))go(claims[sel].state==='inv'?'copilot':'running')});
+document.querySelectorAll('.tiles button').forEach(b=>b.addEventListener('click',()=>{
+  filter=filter===b.dataset.risk?null:b.dataset.risk;
+  document.querySelectorAll('.tiles button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.risk===filter));
+  const vis=claims.map((c,i)=>i).filter(i=>!filter||lv(claims[i].risk)===filter);if(vis.length&&!vis.includes(sel))sel=vis[0];renderRows();
+}));
+document.addEventListener('keydown',e=>{
+  if(!document.getElementById('queue').classList.contains('on')||/INPUT|TEXTAREA/.test(document.activeElement.tagName))return;
+  const vis=claims.map((c,i)=>i).filter(i=>!filter||lv(claims[i].risk)===filter);let p=vis.indexOf(sel);
+  if(e.key==='j'){sel=vis[Math.min(p+1,vis.length-1)];renderRows()}
+  if(e.key==='k'){sel=vis[Math.max(p-1,0)];renderRows()}
+  if(e.key==='x'){picked.has(sel)?picked.delete(sel):picked.add(sel);renderRows();updateBulk()}
+  if(e.key==='Enter'&&(document.activeElement===document.body||document.activeElement.closest('.row')))go(claims[sel].state==='inv'?'copilot':'running');
+});
+
+/* ---------- Hero per claim page ---------- */
+const stepState={
+ running:[["live","Checklist","Running 7 checks"],["","Investigation","Not started"],["","Dossier","—"],["","Decision","Pending"]],
+ copilot:[["done","Checklist","4 passed · 1 failed"],["","Investigation","Recommended"],["","Dossier","—"],["","Decision","Pending"]],
+ investigate:[["done","Checklist","4 passed · 1 failed"],["live","Investigation","Pass 3 of up to 5"],["","Dossier","Held: 2 gaps"],["","Decision","Pending"]],
+ dossier:[["done","Checklist","4 passed · 1 failed"],["done","Investigation","4 passes · 14 sources"],["ready","Dossier","Ready for review"],["","Decision","Yours to make"]]
+};
+const curIdx={running:0,copilot:0,investigate:1,dossier:2};
+const stepGo=["copilot","investigate","dossier","dossier"];
+const heroRight={
+ running:'<span class="pill high">High risk · 98.4</span>',
+ copilot:'<span class="pill high">High risk · 98.4</span>',
+ investigate:'<span class="pill high">High risk · 98.4</span><button class="btn" id="pauseBtn" onclick="togglePause()">Pause</button>',
+ dossier:'<span class="pill high">High risk · 98.4</span><button class="btn" onclick="toast(\'PDF exported\')">Export PDF</button><button class="btn" onclick="toast(\'Link copied\')">Share</button>'
+};
+document.querySelectorAll('[data-hero]').forEach(h=>{const k=h.dataset.hero;
+  h.innerHTML=`<div class="hero-row"><div><h1>COL-107 <span class="who">Matthew Garcia</span></h1><div class="meta-line"><span><b>2018 Ford F-150</b></span><span>Collision</span><span>Estimate <b>$25,877.85</b></span><span>Covered May 15, 2025 – May 15, 2026</span></div></div><div class="right">${heroRight[k]}</div></div>
+  <div class="stepper" role="list">${stepState[k].map((s,i)=>`<button role="listitem" class="${s[0]}${curIdx[k]===i?' cur':''}" data-go="${i===0&&k==='running'?'running':stepGo[i]}"><span class="c">${s[0]==='done'?'✓':s[0]==='live'?'':i+1}</span><span><b>${s[1]}</b><small>${s[2]}</small></span></button>`).join('')}</div>`;
+});
+
+/* ---------- Checklist ---------- */
+function stepHTML(s,i,state,open){
+  const body=state===s.r?`<div class="step-body"><dl class="evid">${s.e.map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join('')}</dl><div class="links"><button class="btn sm" onclick="toast('Opened source')">View source</button><button class="btn sm ghost" onclick="toast('Asked Copilot about ${s.t}')">Ask Copilot</button></div></div>`:'';
+  const expandable=state===s.r;
+  return `<li class="step ${state}" id="${open?'res':'run'}-${i}">${expandable?`<button class="step-h" aria-expanded="false">`:`<div class="step-h">`}
+    <span class="ic">${IC[state]||''}</span><div><div class="t">${s.t}</div>${state===s.r?`<p>${s.d}</p>`:state==='run'?'<div class="skel"></div>':''}</div><span class="res">${LBL[state]}</span>${expandable?'<svg class="i chev"><use href="#i-chev"/></svg>':'<span></span>'}
+  ${expandable?'</button>':'</div>'}${body}</li>`;
+}
+document.getElementById('resSteps').innerHTML=steps.map((s,i)=>stepHTML(s,i,s.r,true)).join('');
+document.addEventListener('click',e=>{const h=e.target.closest('button.step-h');if(h)h.setAttribute('aria-expanded',h.getAttribute('aria-expanded')!=='true')});
+document.querySelectorAll('[data-cite]').forEach(c=>c.addEventListener('click',()=>{
+  const li=document.getElementById('res-'+c.dataset.cite),h=li.querySelector('.step-h');h.setAttribute('aria-expanded','true');
+  li.scrollIntoView({behavior:'smooth',block:'center'});li.classList.remove('flash');void li.offsetWidth;li.classList.add('flash');
+}));
+let timer;
+function renderRun(k){
+  document.getElementById('runSteps').innerHTML=steps.map((s,i)=>stepHTML(s,i,i<k?s.r:i===k?'run':'wait',false)).join('');
+  document.getElementById('runLabel').textContent=k>=7?'7 of 7':`Step ${k+1} of 7`;
+  document.getElementById('runBar').style.width=(k/7*100)+'%';
+  document.getElementById('navRun').textContent=k>=7?'Done':`${k}/7`;
+  const done=k>=7;const sb=document.querySelector('[data-hero=running] .stepper button');if(sb){sb.className=done?'done cur':'live cur';sb.querySelector('.c').textContent=done?'✓':'';sb.querySelector('small').textContent=done?'4 passed · 1 failed':'Running 7 checks';}document.getElementById('doneBanner').classList.toggle('on',done);document.getElementById('runFoot').style.display=done?'none':'flex';
+}
+function startRun(){clearInterval(timer);let k=0;renderRun(0);timer=setInterval(()=>{k++;renderRun(k);if(k>=7){clearInterval(timer);toast('Checklist finished for COL-107','See results','copilot')}},900)}
+
+/* ---------- Investigation ---------- */
+let paused=false;
+function togglePause(){paused=!paused;const b=document.getElementById('pauseBtn');b.textContent=paused?'Resume':'Pause';toast(paused?'Investigation paused after current step':'Investigation resumed')}
+function steer(){const v=document.getElementById('steerIn');if(!v.value.trim())return;const li=document.createElement('li');li.className='steered';li.innerHTML=`<time>now</time><div><span class="agent">You</span> ${v.value.replace(/</g,'&lt;')}<div style="color:var(--muted);font-size:12.5px;margin-top:2px">Orchestrator will include this in pass 4</div></div>`;document.getElementById('log').appendChild(li);li.scrollIntoView({block:'nearest'});v.value='';toast('Sent to the orchestrator')}
+document.getElementById('steerIn').addEventListener('keydown',e=>{if(e.key==='Enter')steer()});
+
+/* ---------- Decisions ---------- */
+let pending=null;
+document.addEventListener('click',e=>{const d=e.target.closest('[data-decide]');if(!d)return;pending=d.dataset.decide;
+  const needs=/SIU|Deny/.test(pending);
+  document.getElementById('dlgT').textContent=`${pending} — COL-107?`;
+  document.getElementById('dlgP').textContent=pending==='Approve'?'Copilot recommends referring this claim to SIU. Approving will release payment of $25,877.85.':needs?'Add a note for the claim file. SIU will see this with the dossier.':'Copilot will draft the request for you to review before it\'s sent.';
+  document.getElementById('dlgNote').value=document.getElementById('decNote').value;
+  document.getElementById('dlgNote').style.display=pending==='Request appraisal'?'none':'block';
+  const g=document.getElementById('dlgGo');g.textContent=pending==='Request appraisal'?'Draft request':pending;
+  document.getElementById('scrim').classList.add('on');setTimeout(()=>document.getElementById('dlgNote').focus(),30);
+});
+function closeDlg(){document.getElementById('scrim').classList.remove('on')}
+document.getElementById('dlgGo').addEventListener('click',()=>{
+  const n=document.getElementById('dlgNote');if(/SIU|Deny/.test(pending)&&!n.value.trim()){n.style.outline='2px solid var(--high)';n.placeholder='A note is required for this decision';n.focus();return}
+  n.style.outline='';closeDlg();
+  const past={"Refer to SIU":"Referred to SIU","Approve":"Approved","Deny":"Denied","Request appraisal":"Appraisal request drafted"}[pending];
+  toast(`${past} · COL-107`,'Undo');
+});
+document.getElementById('scrim').addEventListener('click',e=>{if(e.target.id==='scrim')closeDlg()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDlg()});
+
+/* ---------- Toast ---------- */
+let tt;function toast(msg,action,goto){const t=document.getElementById('toast'),a=document.getElementById('toastA');document.getElementById('toastT').textContent=msg;
+  if(action){a.style.display='';a.textContent=action;a.onclick=()=>{t.classList.remove('on');if(goto)go(goto)}}else a.style.display='none';
+  t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),4200)}
+
+/* ---------- Routing ---------- */
+const crumbs={queue:[["Queue"]],running:[["Queue","queue"],["COL-107","copilot"],["Checklist"]],copilot:[["Queue","queue"],["COL-107","copilot"],["Copilot"]],investigate:[["Queue","queue"],["COL-107","copilot"],["Investigation"]],dossier:[["Queue","queue"],["COL-107","copilot"],["Dossier"]]};
+function go(p){
+  document.querySelectorAll('.page').forEach(s=>s.classList.toggle('on',s.id===p));
+  document.querySelectorAll('.nav button').forEach(b=>b.dataset.go===p?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current'));
+  document.getElementById('crumbs').innerHTML=crumbs[p].map((c,i,a)=>i<a.length-1?`<button data-go="${c[1]}">${c[0]}</button><span aria-hidden="true">/</span>`:`<b aria-current="page">${c[0]}</b>`).join('');
+  if(p==='running')startRun();scrollTo(0,0);
+}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-go]');if(t&&!e.target.closest('[data-pick]'))go(t.dataset.go)});
+renderRows();go('queue');
+</script>
+</body>
+</html>

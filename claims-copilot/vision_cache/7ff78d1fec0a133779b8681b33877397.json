@@ -1,0 +1,97 @@
+{
+  "checks": [
+    {
+      "check_id": "DOC-001",
+      "check_name": "Digital Manipulation",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "No visible signs of photo editing, cloning, warped edges, or mismatched lighting. Document appears to be a clean scan with consistent ink and paper texture throughout."
+    },
+    {
+      "check_id": "DOC-002",
+      "check_name": "Damage Inconsistent with Claimed Cause",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable for this image type \u2014 this is a commercial invoice and packing list, not a damage survey photograph."
+    },
+    {
+      "check_id": "DOC-003",
+      "check_name": "Stock or Reused Image",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable for this image type \u2014 this is an original document scan, not a photograph. No watermarks or stock photo indicators present."
+    },
+    {
+      "check_id": "DOC-004",
+      "check_name": "Capture Date/Location Conflict",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Invoice date 20 AUG 2026, port of loading Singapore, port of discharge Manila (MICT), Philippines are all consistent. No timestamp or location metadata conflicts detected."
+    },
+    {
+      "check_id": "DOC-005",
+      "check_name": "Missing Shipment Identifiers",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable for this image type \u2014 this is a commercial invoice/packing list, not a survey photograph. Document contains invoice number (OTL-INV-26-0917), B/L number (MCLSIN2604417), vessel name (MERIDIAN HARMONY 034N), and six container numbers with seal numbers in the packing details table."
+    },
+    {
+      "check_id": "DOC-006",
+      "check_name": "Packing/Stowage Condition",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable for this image type \u2014 this is a commercial document, not a survey photograph showing physical packing or stowage conditions."
+    },
+    {
+      "check_id": "DOC-007",
+      "check_name": "Font Inconsistency",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "All text appears to use consistent sans-serif font throughout the document. Headers, body text, table entries, and figures all maintain uniform typeface, weight and size. No evidence of mixed fonts or editing."
+    },
+    {
+      "check_id": "DOC-008",
+      "check_name": "Altered Figures or Dates",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "All figures, dates, weights, quantities and values (4,320 M2, 58.00, 250,560.00, 129,600 KGS, 135,000 KGS, etc.) appear cleanly printed with consistent baseline alignment and ink density. No evidence of overwriting, patching, or digit tampering."
+    },
+    {
+      "check_id": "DOC-009",
+      "check_name": "Editable/Template Format",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Document appears professionally formatted on what appears to be a company letterhead template for Orchid Trade Links Pte. Ltd., with consistent layout, spacing and structure typical of a commercial invoice issued by a trading company."
+    },
+    {
+      "check_id": "DOC-010",
+      "check_name": "Missing Official Markings",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Document contains all expected markings: company name and address (Orchid Trade Links Pte. Ltd.), UEN, contact details, invoice number (OTL-INV-26-0917), invoice date, B/L number (MCLSIN2604417), vessel name, ports, buyer/consignee details, and certification statement."
+    },
+    {
+      "check_id": "DOC-011",
+      "check_name": "Signature/Stamp Anomaly",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Red company chop/stamp visible at bottom right appears genuine with consistent ink colour, clear impression, and appropriate placement. No evidence of photocopying, pasting or digital insertion."
+    },
+    {
+      "check_id": "DOC-012",
+      "check_name": "Screenshot/Forwarded Submission",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Image appears to be a direct scan of an original printed document, not a screenshot or photo of a screen. Clean edges, consistent resolution and no UI elements visible."
+    },
+    {
+      "check_id": "DOC-013",
+      "check_name": "Cross-Document Mismatch",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable for this image type \u2014 only a single document is provided. Internal consistency check: all container numbers, seal numbers, vessel name, ports, consignee, cargo description and weights are internally consistent within this invoice and packing list."
+    }
+  ],
+  "overall_assessment": "This commercial invoice and packing list appears to be a genuine, professionally issued document with no signs of digital manipulation, tampering, or fabrication. All required shipping and commercial details are present and internally consistent.",
+  "confidence": 0.94
+}

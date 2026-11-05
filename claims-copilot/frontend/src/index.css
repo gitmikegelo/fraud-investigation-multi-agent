@@ -1,250 +1,128 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap');
 
 /* ── Design tokens ─────────────────────────────────────────────────── */
 :root {
-  /* Backgrounds — page never flat white; pale pastel wash, cards on top */
-  --c-bg:           #f3f1fb;
-  --c-surface:      #ffffff;
-  --c-surface2:     #faf9ff;
-  --c-surface3:     #f3f1fb;
+  /* Core palette */
+  --canvas:       #F4F3F8;
+  --surface:      #FFFFFF;
+  --ink:          #16151D;
+  --ink-2:        #3B3947;
+  --muted:        #6A6878;
+  --line:         #E5E3EC;
+  --line-2:       #EFEDF4;
 
-  /* Borders — thin, light */
-  --c-border:       #ece9f5;
-  --c-border2:      #ddd8ec;
+  /* Accent — violet */
+  --accent:       #A100FF;
+  --accent-ink:   #7500C0;
+  --accent-soft:  #F4EAFF;
+  --accent-line:  #E3D0FA;
+  --accent-glow:  #C77DFF;
 
-  /* Text */
-  --c-text:         #1a1430;
-  --c-text-dim:     #6b6786;
-  --c-text-muted:   #9b97b3;
+  /* Status */
+  --high:         #C22F3A;
+  --high-soft:    #FCEEEF;
+  --med:          #A2650C;
+  --med-soft:     #FBF2E2;
+  --med-line:     #F0DDB8;
+  --med-bar:      #E0A43A;
+  --low:          #2F7A55;
+  --low-soft:     #E9F5EE;
+  --low-bar:      #43B581;
+  --neutral-risk: #A09CB0;
 
-  /* Accent — Accenture purple→magenta. Used sparingly, pops on pale bg. */
-  --c-accent:       #a100ff;
-  --c-accent-hover: #b51fff;
-  --c-accent-light: #f5ebff;
-  --c-accent-mid:   #c44fff;
-  --c-accent-soft:  rgba(161,0,255,0.10);
-  --c-accent-faint: rgba(161,0,255,0.05);
+  /* Gradients (used as values in JS too) */
+  --grad-hero:    radial-gradient(760px 300px at 94% -20%, rgba(184,92,255,.30), transparent 70%),
+                  radial-gradient(560px 260px at 60% -70%, rgba(255,140,210,.18), transparent 70%),
+                  linear-gradient(180deg, #FBF6FF 0%, #F2E8FF 70%, #F1ECF8 100%);
+  --grad-primary: linear-gradient(135deg, #B53DFF, #A100FF 55%, #8A00DB);
+  --grad-user-bubble: linear-gradient(135deg, #B53DFF, #8A00DB);
+  --grad-brand:   linear-gradient(140deg, #C77DFF, #A100FF 55%, #7500C0);
 
-  /* Secondary accent — clean medium blue (step badges, icon circles, links) */
-  --c-blue:         #2962ff;
-  --c-blue-light:   #ebf1ff;
-  --c-blue-soft:    rgba(41,98,255,0.10);
+  /* Radius */
+  --r-s: 7px;
+  --r-m: 10px;
+  --r-l: 14px;
+  --r-pill: 999px;
+  --r-dialog: 16px;
 
-  /* Soft, diffuse shadows */
-  --c-shadow-sm:    0 1px 3px rgba(80,60,140,0.04), 0 4px 12px rgba(80,60,140,0.05);
-  --c-shadow-md:    0 4px 16px rgba(80,60,140,0.06), 0 12px 32px rgba(80,60,140,0.07);
+  /* Shadows */
+  --sh-btn:     0 6px 16px -10px rgba(161,0,255,.8);
+  --sh-focus:   0 0 0 3px rgba(161,0,255,.08);
+  --sh-live:    0 0 0 4px #F4EAFF;
+  --sh-float:   0 16px 40px -16px rgba(22,21,29,.5);
+  --sh-dialog:  0 30px 80px -20px rgba(22,21,29,.45);
 
-  /* Radii */
-  --r-card:         14px;
-  --r-btn:          8px;
+  /* Layout */
+  --sidebar-w:    236px;
+  --topbar-h:     56px;
+  --gutter:       28px;
+  --preview-w:    350px;
+  --chat-w:       400px;
+  --aside-w:      330px;
 
-  /* Semantic */
-  --c-green:        #16a34a;
-  --c-green-bg:     #f0fdf4;
-  --c-green-border: #bbf7d0;
-  --c-amber:        #d97706;
-  --c-amber-bg:     #fffbeb;
-  --c-amber-border: #fde68a;
-  --c-red:          #dc2626;
-  --c-red-bg:       #fef2f2;
-  --c-red-border:   #fecaca;
-  --c-purple:       #a100ff;
-  --c-cyan:         #0891b2;
+  /* Typography */
+  --font: "Instrument Sans", ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
 
-  /* Sidebar — light/airy to match the pale enterprise dashboard feel */
-  --c-sidebar:         #ffffff;
-  --c-sidebar-surface: #faf9ff;
-  --c-sidebar-hover:   rgba(161,0,255,0.05);
-  --c-sidebar-active:  rgba(161,0,255,0.10);
-  --c-sidebar-text:    #6b6786;
-  --c-sidebar-border:  #ece9f5;
-
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  color: var(--c-text);
-  background: var(--c-bg);
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--canvas);
+  font-size: 14px;
+  line-height: 1.45;
+  font-feature-settings: "tnum" 1;
+  -webkit-font-smoothing: antialiased;
 }
 
-*, *::before, *::after { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  margin: 0;
-  -webkit-font-smoothing: antialiased;
-  /* Soft, very subtle diagonal gradient: pale lavender → light blue → near-white */
-  background:
-    linear-gradient(135deg, #f4eeff 0%, #eef2ff 45%, #fbfaff 100%);
-  background-attachment: fixed;
+  background: var(--canvas);
   min-height: 100vh;
 }
 
-/* ── Scrollbar ───────────────────────────────────────────────────────── */
+button, input, textarea { font: inherit; color: inherit; }
+button { background: none; border: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 5px; }
+
+/* ── Scrollbar ─────────────────────────────────────────────────── */
 ::-webkit-scrollbar             { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track       { background: transparent; }
-::-webkit-scrollbar-thumb       { background: var(--c-border2); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--c-text-muted); }
+::-webkit-scrollbar-thumb       { background: var(--line); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
-/* ── Pulse for active agent node ────────────────────────────────────── */
-@keyframes pulse-ring {
-  0%   { transform: scale(1);   opacity: 0.5; }
-  70%  { transform: scale(1.7); opacity: 0; }
-  100% { transform: scale(1.7); opacity: 0; }
-}
-.node-pulse { animation: pulse-ring 1.5s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+/* ── Animations ─────────────────────────────────────────────────── */
+@keyframes spin    { to { transform: rotate(360deg); } }
+@keyframes pulse   { 50% { opacity: .3; } }
+@keyframes sh      { to { background-position: -200% 0; } }
+@keyframes flash   { 0% { background: #F4EAFF; } 100% { background: transparent; } }
+@keyframes slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fade-in-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
-/* ── Glow for active edges ───────────────────────────────────────────── */
-@keyframes edge-flow {
-  0%   { stroke-dashoffset: 20; }
-  100% { stroke-dashoffset: 0; }
-}
-.edge-active {
-  animation: edge-flow 0.8s linear infinite;
-}
+.spin { animation: spin .8s linear infinite; }
+.pulse-dot { animation: pulse 1.4s ease-in-out infinite; }
+.skel { height: 8px; width: 220px; border-radius: 4px; background: linear-gradient(90deg, var(--line-2), #F9F8FB, var(--line-2)); background-size: 200% 100%; animation: sh 1.4s infinite; margin-top: 8px; }
+.log-in { animation: fade-in-up .22s ease-out; }
 
-/* ── List item fade-in ───────────────────────────────────────────────── */
-@keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(5px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.log-entry { animation: fade-in-up 0.2s ease-out; }
-
-/* ══════════════════════════════════════════════════════════════════════
-   Agent Operations Console — scoped motion (graph canvas + feed)
-   ══════════════════════════════════════════════════════════════════════ */
-
-/* Flowing dashed gradient along the active edge (data-in-motion) */
-@keyframes console-edge-flow {
-  to { stroke-dashoffset: -24; }
-}
-.console-edge-active {
-  stroke-dasharray: 6 6;
-  animation: console-edge-flow 0.7s linear infinite;
-}
-
-/* Handoff: node briefly scales up then settles */
-@keyframes console-handoff-pop {
-  0%   { transform: scale(1); }
-  45%  { transform: scale(1.06); }
-  100% { transform: scale(1); }
-}
-.console-node-active {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: console-handoff-pop 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* Active-node halo breathing */
-@keyframes console-halo-breathe {
-  0%, 100% { opacity: 0.35; }
-  50%      { opacity: 0.7; }
-}
-.console-node-halo {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: console-halo-breathe 2.2s ease-in-out infinite;
-}
-
-/* Loop/timer ring fill */
-@keyframes console-ring-spin {
-  to { transform: rotate(360deg); }
-}
-.console-loop-ring {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: console-ring-spin 2.4s linear infinite;
-}
-
-/* Particle travelling along the active edge on handoff */
-@keyframes console-particle-travel {
-  from { offset-distance: 0%; opacity: 0; }
-  10%  { opacity: 1; }
-  90%  { opacity: 1; }
-  to   { offset-distance: 100%; opacity: 0; }
-}
-
-/* Feed rows: slide + fade in at the top */
-@keyframes console-row-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.console-row-in {
-  animation: console-row-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* Respect reduced-motion: kill the flowing / pulsing / breathing effects */
 @media (prefers-reduced-motion: reduce) {
-  .node-pulse,
-  .edge-active,
-  .console-edge-active,
-  .console-node-active,
-  .console-node-halo,
-  .console-loop-ring,
-  .console-row-in {
-    animation: none !important;
-  }
-  .console-edge-active { stroke-dasharray: none; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-/* ── Chat markdown ───────────────────────────────────────────────────── */
-.chat-markdown p       { margin: 0.3rem 0; }
-.chat-markdown ul      { padding-left: 1.25rem; margin: 0.3rem 0; }
-.chat-markdown ol      { padding-left: 1.25rem; margin: 0.3rem 0; }
-.chat-markdown li      { margin: 0.15rem 0; }
-.chat-markdown strong  { font-weight: 600; color: var(--c-text); }
-.chat-markdown code    { background: var(--c-accent-faint); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
-.chat-markdown pre     { background: var(--c-surface2); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 0.85em; border: 1px solid var(--c-border); margin: 0.4rem 0; }
-.chat-markdown table   { width: 100%; border-collapse: collapse; margin: 0.4rem 0; font-size: 0.85em; }
-.chat-markdown th      { padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--c-border2); font-weight: 600; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--c-text-dim); }
-.chat-markdown td      { padding: 4px 8px; border-bottom: 1px solid var(--c-border); }
-.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { margin: 0.5rem 0 0.25rem; font-weight: 600; }
-.chat-markdown h1      { font-size: 1.1em; }
-.chat-markdown h2      { font-size: 1em; }
-.chat-markdown h3      { font-size: 0.95em; color: var(--c-text-dim); }
+/* ── Dossier markdown ─────────────────────────────────────────────── */
+.dossier-md h1 { font-size: 1.3rem; font-weight: 700; margin: 1.25rem 0 .6rem; color: var(--ink); border-bottom: 2px solid var(--accent); padding-bottom: .4rem; }
+.dossier-md h2 { font-size: 1.05rem; font-weight: 600; margin: 1rem 0 .4rem; border-bottom: 1px solid var(--line); padding-bottom: .3rem; }
+.dossier-md h3 { font-size: .95rem; font-weight: 600; margin: .8rem 0 .3rem; color: var(--muted); }
+.dossier-md p  { margin: .45rem 0; line-height: 1.7; }
+.dossier-md ul { padding-left: 1.4rem; margin: .4rem 0; }
+.dossier-md li { margin: .25rem 0; }
+.dossier-md strong { font-weight: 600; }
+.dossier-md table { width: 100%; border-collapse: collapse; margin: .8rem 0; font-size: .85rem; }
+.dossier-md th { padding: 5px 10px; text-align: left; border-bottom: 1px solid var(--line); font-weight: 600; color: var(--muted); font-size: .8rem; }
+.dossier-md td { padding: 5px 10px; border-bottom: 1px solid var(--line-2); }
+.dossier-md code { background: var(--line-2); padding: 1px 5px; border-radius: 4px; font-size: .88em; }
+.dossier-md pre  { background: var(--line-2); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: .85em; }
 
-/* ── Dossier — screen markdown ───────────────────────────────────────── */
-.dossier-content h1 {
-  font-size: 1.4rem; font-weight: 700;
-  margin: 1.5rem 0 0.75rem; color: var(--c-text);
-  padding-bottom: 0.5rem; border-bottom: 2px solid var(--c-accent);
-}
-.dossier-content h2 {
-  font-size: 1.1rem; font-weight: 600;
-  margin: 1.25rem 0 0.5rem; color: var(--c-text);
-  padding-bottom: 0.35rem; border-bottom: 1px solid var(--c-border);
-}
-.dossier-content h3 { font-size: 0.95rem; font-weight: 600; margin: 1rem 0 0.4rem; color: var(--c-text-dim); }
-.dossier-content p  { margin: 0.5rem 0; line-height: 1.7; color: var(--c-text); }
-.dossier-content ul { padding-left: 1.5rem; margin: 0.5rem 0; }
-.dossier-content li { margin: 0.3rem 0; color: var(--c-text); }
-.dossier-content strong { color: var(--c-text); font-weight: 600; }
-.dossier-content table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.8rem; border: 1px solid var(--c-border); border-radius: 8px; overflow: hidden; }
-.dossier-content thead { background: var(--c-surface2); }
-.dossier-content th { padding: 0.55rem 0.75rem; text-align: left; border-bottom: 1px solid var(--c-border2); color: var(--c-text); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
-.dossier-content td     { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--c-border); color: var(--c-text); }
-.dossier-content tr:hover td { background: var(--c-surface2); }
-.dossier-content .table-wrap { overflow-x: auto; margin: 1rem 0; border-radius: 8px; border: 1px solid var(--c-border); }
-.dossier-content code { background: var(--c-surface2); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; border: 1px solid var(--c-border); }
-.dossier-content pre  { background: var(--c-surface2); padding: 1rem; border-radius: 8px; overflow-x: auto; border: 1px solid var(--c-border); }
-
-/* ── PDF export (print-friendly) ────────────────────────────────────── */
-.dossier-pdf-content {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  color: #1e293b;
-  background: #ffffff;
-  padding: 0.5in;
-  font-size: 11px;
-  line-height: 1.6;
-}
-.dossier-pdf-content h1 { font-size: 18px; font-weight: 700; margin: 18px 0 8px; color: #0f172a; border-bottom: 2px solid #a100ff; padding-bottom: 4px; }
-.dossier-pdf-content h2 { font-size: 14px; font-weight: 600; margin: 14px 0 6px; color: #1e293b; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; }
-.dossier-pdf-content h3 { font-size: 12px; font-weight: 600; margin: 10px 0 4px; color: #334155; }
-.dossier-pdf-content p  { margin: 4px 0; }
-.dossier-pdf-content ul { padding-left: 18px; margin: 4px 0; }
-.dossier-pdf-content li { margin: 2px 0; }
-.dossier-pdf-content strong { color: #0f172a; }
-.dossier-pdf-content table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 10px; }
-.dossier-pdf-content thead { background: #f1f5f9; }
-.dossier-pdf-content th { padding: 5px 8px; text-align: left; border: 1px solid #cbd5e1; font-weight: 600; color: #0f172a; white-space: nowrap; }
-.dossier-pdf-content td { padding: 4px 8px; border: 1px solid #e2e8f0; color: #334155; }
-.dossier-pdf-content tr:nth-child(even) td { background: #f8fafc; }
-.dossier-pdf-content code { background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 0.9em; }
-.dossier-pdf-content pre { background: #f1f5f9; padding: 8px; border-radius: 4px; overflow-x: auto; }
-.dossier-pdf-content hr { border: none; border-top: 1px solid #cbd5e1; margin: 10px 0; }
+/* ── Chat markdown ─────────────────────────────────────────────────── */
+.chat-md p      { margin: .3rem 0; }
+.chat-md ul     { padding-left: 1.25rem; margin: .3rem 0; }
+.chat-md li     { margin: .15rem 0; }
+.chat-md strong { font-weight: 600; }
+.chat-md code   { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; font-size: .88em; }

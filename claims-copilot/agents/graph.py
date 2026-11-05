@@ -47,7 +47,7 @@ def route_after_dossier(state: InvestigationState) -> str:
 
 def create_investigation_graph():
     """
-    Create the LangGraph workflow for fraud investigation.
+    Create the LangGraph workflow for marine cargo fraud investigation.
     
     Flow:
         START 
@@ -100,9 +100,9 @@ def create_investigation_graph():
     return app
 
 
-def run_investigation(initial_query: str = "Investigate suspicious billing patterns", max_iterations: int = 10):
+def run_investigation(initial_query: str = "Investigate suspicious marine cargo claims", max_iterations: int = 10):
     """
-    Run a fraud investigation using the agent graph.
+    Run a marine cargo fraud investigation using the agent graph.
     
     Args:
         initial_query: Starting prompt for the investigation

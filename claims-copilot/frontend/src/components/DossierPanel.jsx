@@ -1,453 +1,276 @@
-import { useRef, useCallback, useState, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import html2pdf from 'html2pdf.js'
+import { Pill } from '../App'
 
-const TIER_DOT = { HIGH: '#ef4444', MEDIUM: '#f59e0b', LOW: '#6b7280' }
+export const REQUIRED_CHECKS = [
+  'Documents reconciled', 'Value vs market', 'Photo integrity',
+  'Claim frequency', 'Coverage basis', 'Surveyor independence',
+]
 
-function tier(score) {
-  if (score >= 60) return 'HIGH'
-  if (score >= 30) return 'MEDIUM'
-  return 'LOW'
+const plain = (s = '') => s.replace(/\*\*|\*|`/g, '').trim()
+
+function section(md, name) {
+  const m = md.match(new RegExp(`^##\\s+${name}[^\\n]*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'mi'))
+  return m ? m[1] : ''
 }
 
-export default function DossierPanel({ caseId }) {
-  const dossierRef = useRef(null)
-  const letterRef = useRef(null)
-  const [generating, setGenerating] = useState(false)
-  const [aiGenerating, setAiGenerating] = useState(false)
-  const [claim, setClaim] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [aiDossier, setAiDossier] = useState(null)
-  const [aiError, setAiError] = useState(null)
-  const [letter, setLetter] = useState(null)
-  const [letterGenerating, setLetterGenerating] = useState(false)
-  const [letterError, setLetterError] = useState(null)
-  const [letterOpen, setLetterOpen] = useState(false)
-  const [letterPdfGenerating, setLetterPdfGenerating] = useState(false)
+function field(md, name) {
+  const m = md.match(new RegExp(`^\\*\\*${name}\\*\\*:\\s*(.+)$`, 'mi'))
+  return m ? plain(m[1]) : ''
+}
+
+function parseDossier(md) {
+  const exec = section(md, 'EXECUTIVE SUMMARY')
+  const bottom = plain(exec.match(/\*\*Bottom line\*\*:\s*(.+)/i)?.[1] || '')
+  const recs = section(md, 'RECOMMENDATIONS')
+  const decisionText = (bottom || recs.split('\n').find(l => /^\s*1\./.test(l)) || '').toLowerCase()
+
+  const recommendation = /declin|deny|reject/.test(decisionText) ? 'decline'
+    : /approve|pay/.test(decisionText) ? 'approve' : 'investigate'
+
+  const hypothesis = field(md, 'Hypothesis')
+  const headline = (hypothesis.split(/\s+—\s+/)[0] || field(md, 'Case Type')).replace(/^./, c => c.toUpperCase())
+  const summary = bottom || plain(exec.split('\n\n').find(p => p.trim()) || '')
+
+  const weightOf = (sev) => /critical/i.test(sev) ? 'strong' : /mitigat|low/i.test(sev) ? 'mitigating' : 'moderate'
+  const findings = section(md, 'EVIDENCE LEDGER').split('\n')
+    .map(l => l.split('|').map(c => c.trim()))
+    .filter(c => c.length >= 6 && /^\d+$/.test(c[1]))
+    .map(c => {
+      const [title, ...rest] = plain(c[2]).split(/\s+—\s+/)
+      return { title, detail: rest.join(' — '), weight: weightOf(c[3]), source: plain(c[4]) }
+    })
+    .sort((a, b) => ['strong', 'moderate', 'mitigating'].indexOf(a.weight) - ['strong', 'moderate', 'mitigating'].indexOf(b.weight))
+
+  const actions = recs.split('\n').filter(l => /^\s*\d+\.\s+/.test(l)).map(l => plain(l.replace(/^\s*\d+\.\s+/, '')))
+
+  return { recommendation, headline, summary, findings, actions }
+}
+
+const REC_PILL = {
+  decline: ['high', 'Recommendation: decline and refer for investigation'],
+  approve: ['ok', 'Recommendation: approve'],
+  investigate: ['med', 'Recommendation: refer for investigation'],
+}
+const WEIGHT = { strong: ['high', 'Strong'], moderate: ['med', 'Moderate'], mitigating: ['ok', 'Mitigating'] }
+const ACTION = {
+  decline: { verb: 'Decline', done: 'Declined', needsNote: true },
+  approve: { verb: 'Approve', done: 'Approved', needsNote: false },
+  siu: { verb: 'Refer for investigation', done: 'Referred for investigation', needsNote: true },
+  survey: { verb: 'Request survey', done: 'Independent survey requested', needsNote: false },
+}
+
+const panel = { background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-l)', overflow: 'hidden' }
+const btn = { width: '100%', padding: '8px 14px', borderRadius: 'var(--r-s)', fontWeight: 500, fontSize: 13.5, border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink-2)' }
+const primary = { ...btn, border: '1px solid var(--accent)', background: 'var(--grad-primary)', color: '#fff', boxShadow: 'var(--sh-btn)' }
+
+function DecisionDialog({ action, claim, recommendation, initialNote, onClose, onConfirm }) {
+  const [note, setNote] = useState(initialNote)
+  const [error, setError] = useState(false)
+  const noteRef = useRef(null)
+  const goRef = useRef(null)
+  const a = ACTION[action]
+  const amount = `US$${(claim.claim_amount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
 
   useEffect(() => {
-    if (!caseId) { setClaim(null); setAiDossier(null); setAiError(null); setLetter(null); setLetterError(null); setLetterOpen(false); return }
-    setLetter(null); setLetterError(null); setLetterOpen(false)
-    const load = async () => {
-      setLoading(true)
-      setAiDossier(null)
-      setAiError(null)
-      let claimData = null
-      try {
-        const res = await fetch(`http://${window.location.hostname}:8000/api/claims/${caseId}`)
-        claimData = await res.json()
-        setClaim(claimData)
-        // If a previously generated AI dossier is cached on the claim, show it
-        if (claimData.dossier) { setAiDossier(claimData.dossier); setLoading(false); return }
-      } catch { setLoading(false); return }
-      setLoading(false)
+    const prev = document.activeElement
+    ;(a.needsNote ? noteRef : goRef).current?.focus()
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey); prev?.focus?.() }
+  }, [onClose, a.needsNote])
 
-      // Auto-generate AI dossier on first open
-      setAiGenerating(true)
-      try {
-        const genRes = await fetch(
-          `http://${window.location.hostname}:8000/api/claims/${caseId}/generate_dossier`,
-          { method: 'POST' }
-        )
-        const genData = await genRes.json()
-        if (genData.error) setAiError(genData.error)
-        else setAiDossier(genData.dossier)
-      } catch {
-        setAiError('AI generation failed. Showing standard dossier.')
-      } finally {
-        setAiGenerating(false)
-      }
-    }
-    load()
-  }, [caseId])
+  const body = action === 'approve'
+    ? `${recommendation === 'approve' ? 'Copilot recommends approval.' : 'Copilot recommends declining this claim.'} Approving will release payment of ${amount}.`
+    : action === 'survey'
+      ? 'Copilot will draft the instruction to an insurer-appointed panel surveyor for you to review before it is sent.'
+      : 'Add a note for the claim file. The investigations team will see it with the dossier.'
 
-  const handleGenerateAI = useCallback(async () => {
-    if (!caseId) return
-    setAiGenerating(true)
-    setAiError(null)
-    try {
-      const res = await fetch(
-        `http://${window.location.hostname}:8000/api/claims/${caseId}/generate_dossier`,
-        { method: 'POST' }
-      )
-      const data = await res.json()
-      if (data.error) { setAiError(data.error); return }
-      setAiDossier(data.dossier)
-    } catch (e) {
-      setAiError('Failed to generate dossier. Check backend connection.')
-    } finally {
-      setAiGenerating(false)
-    }
-  }, [caseId])
-
-  const handleGenerateLetter = useCallback(async () => {
-    if (!caseId) return
-    setLetterOpen(true)
-    // Reuse an already-generated letter if present
-    if (letter) return
-    setLetterGenerating(true)
-    setLetterError(null)
-    try {
-      const res = await fetch(
-        `http://${window.location.hostname}:8000/api/claims/${caseId}/generate_letter`,
-        { method: 'POST' }
-      )
-      const data = await res.json()
-      if (data.error) { setLetterError(data.error); return }
-      setLetter(data.letter)
-    } catch {
-      setLetterError('Failed to generate letter. Check backend connection.')
-    } finally {
-      setLetterGenerating(false)
-    }
-  }, [caseId, letter])
-
-  const handleDownloadLetterPDF = useCallback(async () => {
-    if (!letterRef.current) return
-    setLetterPdfGenerating(true)
-    try {
-      const opt = {
-        margin:      [0.75, 0.75, 0.75, 0.75],
-        filename:    `claimant_letter_${caseId || 'unknown'}_${new Date().toISOString().slice(0, 10)}.pdf`,
-        image:       { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-        jsPDF:       { unit: 'in', format: 'letter', orientation: 'portrait' },
-        pagebreak:   { mode: ['avoid-all', 'css', 'legacy'] },
-      }
-      await html2pdf().set(opt).from(letterRef.current).save()
-    } finally {
-      setLetterPdfGenerating(false)
-    }
-  }, [caseId])
-
-  const handleDownloadPDF = useCallback(async () => {
-    if (!dossierRef.current) return
-    setGenerating(true)
-    try {
-      const opt = {
-        margin:      [0.5, 0.6, 0.5, 0.6],
-        filename:    `claim_dossier_${caseId || 'unknown'}_${new Date().toISOString().slice(0, 10)}.pdf`,
-        image:       { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-        jsPDF:       { unit: 'in', format: 'letter', orientation: 'portrait' },
-        pagebreak:   { mode: ['avoid-all', 'css', 'legacy'] },
-      }
-      await html2pdf().set(opt).from(dossierRef.current).save()
-    } finally {
-      setGenerating(false)
-    }
-  }, [caseId])
-
-  if (!caseId) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <div className="text-4xl opacity-20">📄</div>
-          <p className="text-sm" style={{ color: 'var(--c-text-dim)' }}>
-            Select a claim from the queue to view its dossier
-          </p>
-        </div>
-      </div>
-    )
+  const confirm = () => {
+    if (a.needsNote && !note.trim()) { setError(true); noteRef.current?.focus(); return }
+    onConfirm(action, note)
   }
-
-  if (loading) {
-    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--c-text-dim)', fontSize: 13 }}>Loading claim data…</div>
-  }
-
-  if (!claim) {
-    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--c-text-dim)', fontSize: 13 }}>Claim not found.</div>
-  }
-
-  const rs = claim.risk_score || 0
-  const t = tier(rs)
-  const rules = claim.rules_triggered || []
-  const docs = claim.document_flags || []
-  const checklist = claim.checklist_state || {}
-  const steps = checklist.steps || []
-
-  const dossierMarkdown = aiDossier || buildDossierMarkdown(claim, rules, docs, steps)
 
   return (
-    <div style={{ height: '100%', overflow: 'auto', padding: 24 }}>
-      <div style={{ maxWidth: 800, margin: '0 auto' }}>
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16,
-          padding: '16px 20px', borderRadius: 'var(--r-card)',
-          background: 'var(--c-surface)', border: '1px solid var(--c-border)',
-          boxShadow: 'var(--c-shadow-sm)',
-        }}>
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <rect x="3" y="2" width="14" height="16" rx="2" stroke="var(--c-blue)" strokeWidth="1.5" />
-            <line x1="6" y1="6" x2="14" y2="6" stroke="var(--c-blue)" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="6" y1="9" x2="14" y2="9" stroke="var(--c-blue)" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="6" y1="12" x2="11" y2="12" stroke="var(--c-blue)" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-          <div style={{ flex: 1 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>
-              Claim Dossier — {claim.case_id}
-            </h2>
-            <div style={{ fontSize: 12, color: 'var(--c-text-dim)', marginTop: 2 }}>
-              {claim.subject_name} · {claim.claim_type?.replace(/_/g, ' ')} · ${(claim.claim_amount || 0).toLocaleString()}
-              {aiDossier && <span style={{ marginLeft: 8, color: '#22c55e', fontWeight: 600 }}>✦ AI-Generated</span>}
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: '50%', background: TIER_DOT[t] }} />
-            <span style={{ fontSize: 14, fontWeight: 700, color: TIER_DOT[t] }}>{rs}</span>
-          </div>
-          {/* Generate AI Dossier button */}
-          <button
-            onClick={handleGenerateAI}
-            disabled={aiGenerating}
-            title="Use Claude to write a comprehensive narrative dossier"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 11, fontWeight: 600, padding: '7px 16px', borderRadius: 'var(--r-btn)',
-              textTransform: 'uppercase', letterSpacing: '0.04em',
-              background: aiGenerating ? 'var(--c-accent-soft)' : 'linear-gradient(90deg, #a100ff, #d6298a)',
-              color: aiGenerating ? 'var(--c-accent)' : '#fff',
-              border: 'none',
-              cursor: aiGenerating ? 'default' : 'pointer',
-              opacity: aiGenerating ? 0.8 : 1, transition: 'all 0.15s',
-            }}
-          >
-            {aiGenerating ? (
-              <><span className="animate-pulse">✦</span> Writing…</>
-            ) : (
-              <><span>✦</span> {aiDossier ? 'Regenerate' : 'Generate AI Dossier'}</>
-            )}
-          </button>
-          <button
-            onClick={handleGenerateLetter}
-            disabled={letterGenerating}
-            title="Generate a short, plain-language letter to send to the claimant"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 11, fontWeight: 600, padding: '7px 16px', borderRadius: 'var(--r-btn)',
-              textTransform: 'uppercase', letterSpacing: '0.04em',
-              background: 'transparent',
-              color: 'var(--c-blue)', border: '1px solid var(--c-blue)',
-              cursor: letterGenerating ? 'default' : 'pointer',
-              opacity: letterGenerating ? 0.6 : 1,
-            }}
-          >
-            {letterGenerating ? 'Writing…' : '✉ Claimant Letter'}
-          </button>
-          <button
-            onClick={handleDownloadPDF}
-            disabled={generating}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 11, fontWeight: 600, padding: '7px 16px', borderRadius: 'var(--r-btn)',
-              textTransform: 'uppercase', letterSpacing: '0.04em',
-              background: 'transparent',
-              color: 'var(--c-accent)', border: '1px solid var(--c-accent)',
-              cursor: generating ? 'default' : 'pointer',
-              opacity: generating ? 0.6 : 1,
-            }}
-          >
-            {generating ? 'Generating…' : 'Download PDF'}
-          </button>
-        </div>
-
-        {/* AI error */}
-        {aiError && (
-          <div style={{
-            marginBottom: 12, padding: '10px 16px', borderRadius: 8,
-            background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-            fontSize: 12, color: '#ef4444',
-          }}>
-            ⚠ {aiError}
-          </div>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(22,21,29,.32)', display: 'grid', placeItems: 'center', zIndex: 50, backdropFilter: 'blur(2px)' }}>
+      <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="dlg-title"
+        style={{ background: '#fff', borderRadius: 'var(--r-dialog)', width: 'min(440px, 92vw)', padding: 22, boxShadow: 'var(--sh-dialog)' }}>
+        <h2 id="dlg-title" style={{ fontSize: 17, fontWeight: 600 }}>{a.verb} — {claim.case_id}?</h2>
+        <p style={{ color: 'var(--muted)', fontSize: 13.5, margin: '6px 0 14px' }}>{body}</p>
+        {action !== 'survey' && (
+          <textarea ref={noteRef} value={note} onChange={e => { setNote(e.target.value); setError(false) }}
+            placeholder={error ? 'A note is required for this decision' : 'Note for the claim file'}
+            style={{ width: '100%', minHeight: 74, resize: 'vertical', border: `1px solid ${error ? 'var(--high)' : 'var(--line)'}`, outline: error ? '2px solid var(--high)' : undefined, outlineOffset: -1, borderRadius: 'var(--r-s)', padding: '9px 11px', fontSize: 13, background: 'var(--canvas)', marginBottom: 10 }} />
         )}
-
-        {/* AI generating progress */}
-        {aiGenerating && (
-          <div style={{
-            marginBottom: 12, padding: '12px 16px', borderRadius: 'var(--r-btn)',
-            background: 'var(--c-accent-faint)', border: '1px solid var(--c-accent-soft)',
-            fontSize: 12, color: 'var(--c-accent)', display: 'flex', alignItems: 'center', gap: 8,
-          }}>
-            <span className="animate-pulse">✦</span>
-            Claude is reading all intelligence layers and writing the full investigation report…
-          </div>
-        )}
-
-        {/* Hidden PDF clone */}
-        <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-          <div ref={dossierRef} className="dossier-pdf-content">
-            <Markdown remarkPlugins={[remarkGfm]}>{dossierMarkdown}</Markdown>
-          </div>
-        </div>
-
-        {/* Rendered dossier */}
-        <div
-          className="dossier-content"
-          style={{
-            padding: 24, borderRadius: 'var(--r-card)',
-            background: 'var(--c-surface)', border: '1px solid var(--c-border)',
-            boxShadow: 'var(--c-shadow-sm)',
-            fontSize: 13, lineHeight: 1.7,
-          }}
-        >
-          <Markdown remarkPlugins={[remarkGfm]}>{dossierMarkdown}</Markdown>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" onClick={onClose} style={{ ...btn, width: 'auto' }}>Cancel</button>
+          <button type="button" ref={goRef} onClick={confirm} style={{ ...primary, width: 'auto' }}>{a.verb}</button>
         </div>
       </div>
-
-      {/* Claimant letter modal */}
-      {letterOpen && (
-        <div
-          onClick={() => setLetterOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1000,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: '100%', maxWidth: 680, maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-              borderRadius: 'var(--r-card)', background: 'var(--c-surface)',
-              border: '1px solid var(--c-border)', boxShadow: 'var(--c-shadow-md, 0 10px 40px rgba(0,0,0,0.3))',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Modal header */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px',
-              borderBottom: '1px solid var(--c-border)',
-            }}>
-              <div style={{ flex: 1 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>
-                  Claimant Letter — {claim.case_id}
-                </h3>
-                <div style={{ fontSize: 11, color: 'var(--c-text-dim)', marginTop: 2 }}>
-                  Plain-language notice for {claim.subject_name}
-                </div>
-              </div>
-              {letter && !letterGenerating && (
-                <button
-                  onClick={handleDownloadLetterPDF}
-                  disabled={letterPdfGenerating}
-                  style={{
-                    fontSize: 11, fontWeight: 600, padding: '7px 14px', borderRadius: 'var(--r-btn)',
-                    textTransform: 'uppercase', letterSpacing: '0.04em',
-                    background: 'transparent', color: 'var(--c-accent)', border: '1px solid var(--c-accent)',
-                    cursor: letterPdfGenerating ? 'default' : 'pointer', opacity: letterPdfGenerating ? 0.6 : 1,
-                  }}
-                >
-                  {letterPdfGenerating ? 'Generating…' : 'Download PDF'}
-                </button>
-              )}
-              <button
-                onClick={() => setLetterOpen(false)}
-                style={{
-                  fontSize: 18, lineHeight: 1, padding: '4px 10px', borderRadius: 'var(--r-btn)',
-                  background: 'transparent', color: 'var(--c-text-dim)', border: 'none', cursor: 'pointer',
-                }}
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Modal body */}
-            <div style={{ padding: 24, overflow: 'auto' }}>
-              {letterGenerating && (
-                <div style={{ textAlign: 'center', color: 'var(--c-blue)', fontSize: 13, padding: 20 }}>
-                  <span className="animate-pulse">✉</span> Drafting the claimant letter…
-                </div>
-              )}
-              {letterError && (
-                <div style={{
-                  padding: '10px 16px', borderRadius: 8,
-                  background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-                  fontSize: 12, color: '#ef4444',
-                }}>
-                  ⚠ {letterError}
-                </div>
-              )}
-              {letter && !letterGenerating && (
-                <div
-                  className="dossier-content"
-                  style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--c-text)' }}
-                >
-                  <Markdown remarkPlugins={[remarkGfm]}>{letter}</Markdown>
-                </div>
-              )}
-              {/* Hidden PDF clone (white background for print) */}
-              <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-                <div ref={letterRef} className="dossier-pdf-content" style={{ color: '#111' }}>
-                  {letter && <Markdown remarkPlugins={[remarkGfm]}>{letter}</Markdown>}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
 
+export default function DossierPanel({ claim, dossierMarkdown, investigationDone, decision, onDecision, onGoToInvestigation }) {
+  const [serverDossier, setServerDossier] = useState(null)
+  const [note, setNote] = useState('')
+  const [dialog, setDialog] = useState(null)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const pdfRef = useRef(null)
 
-function buildDossierMarkdown(claim, rules, docs, steps) {
-  const rs = claim.risk_score || 0
-  const t = tier(rs)
-  const ruleBlock = rules.length > 0
-    ? rules.map(r => `| ${r.rule_id} | ${r.name} | ${r.severity} | ${r.detail || '—'} |`).join('\n')
-    : '| — | No rules triggered | — | — |'
-  const docBlock = docs.length > 0
-    ? docs.map(d => `- **${d.check_id}** (${d.severity}): ${d.detail || d.message || '—'}`).join('\n')
-    : '- No document flags'
-  const checkBlock = steps.length > 0
-    ? steps.map(s => `| ${s.step} | ${s.name} | ${(s.status || 'not_run').replace(/_/g, ' ')} | ${s.detail || '—'} |`).join('\n')
-    : '| — | No checklist data | — | — |'
+  useEffect(() => {
+    if (dossierMarkdown || !claim?.case_id) return
+    fetch(`/api/claims/${claim.case_id}`)
+      .then(r => r.json())
+      .then(d => { if (d.dossier) setServerDossier(d.dossier) })
+      .catch(() => {})
+  }, [claim?.case_id, dossierMarkdown])
 
-  return `# Travel Insurance Claim Dossier
+  const dossier = dossierMarkdown || serverDossier
 
-## Claim Overview
+  const exportPdf = useCallback(async () => {
+    if (!pdfRef.current) return
+    setPdfBusy(true)
+    try {
+      await html2pdf().set({
+        margin: [0.5, 0.6, 0.5, 0.6],
+        filename: `marine_claim_dossier_${claim.case_id}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'] },
+      }).from(pdfRef.current).save()
+    } finally { setPdfBusy(false) }
+  }, [claim?.case_id])
 
-| Field | Value |
-|-------|-------|
-| **Claim ID** | ${claim.case_id} |
-| **Member** | ${claim.subject_name} |
-| **Member ID** | ${claim.member_id || '—'} |
-| **Employer** | ${claim.employer_name || '—'} |
-| **Claim Type** | ${(claim.claim_type || '—').replace(/_/g, ' ')} |
-| **Claim Amount** | $${(claim.claim_amount || 0).toLocaleString()} |
-| **Coverage Period** | ${claim.coverage_start || '—'} to ${claim.coverage_end || '—'} |
-| **Provider** | ${claim.provider_name || '—'} |
-| **Status** | ${claim.status || '—'} |
-| **Risk Score** | **${rs}** (${t}) |
+  if (!dossier) {
+    return (
+      <div style={{ ...panel, padding: '40px 38px', borderTop: '3px solid var(--accent)', maxWidth: 720 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600 }}>No dossier yet</h2>
+        <p style={{ color: 'var(--ink-2)', fontSize: 14, margin: '8px 0 18px', maxWidth: '60ch' }}>
+          The case writer drafts the dossier once its six required checks are met. Run the investigation to start.
+        </p>
+        <button type="button" onClick={onGoToInvestigation} style={{ ...primary, width: 'auto' }}>Go to investigation</button>
+      </div>
+    )
+  }
 
-## Rules Triggered (${rules.length})
+  const d = parseDossier(dossier)
+  const [recTone, recLabel] = REC_PILL[d.recommendation]
+  const primaryAction = d.recommendation === 'approve' ? 'approve' : 'decline'
+  const ghostAction = primaryAction === 'approve' ? 'decline' : 'approve'
+  const checksMet = investigationDone || /Evidence Sufficient/i.test(dossier)
 
-| Rule | Name | Severity | Detail |
-|------|------|----------|--------|
-${ruleBlock}
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) var(--aside-w)', gap: 18, alignItems: 'start' }}>
+        <article style={{ ...panel, borderTop: '3px solid var(--accent)', padding: '30px 38px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Pill tone={recTone}>{recLabel}</Pill>
+            <button type="button" onClick={exportPdf} disabled={pdfBusy} style={{ ...btn, width: 'auto', marginLeft: 'auto', fontSize: 13, padding: '6px 12px' }}>
+              {pdfBusy ? 'Exporting…' : 'Export PDF'}
+            </button>
+          </div>
+          {d.headline && <h2 style={{ fontSize: 20, fontWeight: 600, letterSpacing: '-.015em', marginTop: 14, maxWidth: '40ch' }}>{d.headline}</h2>}
+          {d.summary && <p style={{ fontSize: 15, color: 'var(--ink-2)', margin: '10px 0 22px', maxWidth: '66ch', lineHeight: 1.55 }}>{d.summary}</p>}
 
-## Document Analysis
+          {d.findings.length > 0 && (
+            <>
+              <h3 style={{ fontSize: 14, fontWeight: 600, margin: '22px 0 8px' }}>Findings</h3>
+              {d.findings.map((f, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '22px 1fr auto', gap: 12, padding: '12px 0', borderTop: '1px solid var(--line-2)', fontSize: 13.5, alignItems: 'start' }}>
+                  <span style={{ color: 'var(--muted)' }}>{i + 1}</span>
+                  <div>
+                    <b style={{ fontWeight: 500 }}>{f.title}</b>
+                    {f.detail && <p style={{ color: 'var(--muted)', marginTop: 2, fontSize: 13 }}>{f.detail}</p>}
+                    {f.source && <p style={{ marginTop: 6, fontSize: 12, color: 'var(--accent-ink)', textDecoration: 'underline', textDecorationColor: 'var(--accent-line)', textUnderlineOffset: 3 }}>{f.source}</p>}
+                  </div>
+                  <Pill tone={WEIGHT[f.weight][0]}>{WEIGHT[f.weight][1]}</Pill>
+                </div>
+              ))}
+            </>
+          )}
 
-${docBlock}
+          {d.actions.length > 0 && (
+            <>
+              <h3 style={{ fontSize: 14, fontWeight: 600, margin: '22px 0 8px' }}>Recommended actions</h3>
+              <ol style={{ paddingLeft: 20, display: 'grid', gap: 6, fontSize: 13.5, color: 'var(--ink-2)' }}>
+                {d.actions.map((a, i) => <li key={i}>{a}</li>)}
+              </ol>
+            </>
+          )}
 
-## Examiner Checklist
+          <details style={{ marginTop: 24 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--muted)', fontWeight: 500 }}>Full investigation report</summary>
+            <div className="dossier-md" style={{ fontSize: 13, lineHeight: 1.7, marginTop: 12 }}>
+              <Markdown remarkPlugins={[remarkGfm]}>{dossier}</Markdown>
+            </div>
+          </details>
+        </article>
 
-| Step | Check | Status | Detail |
-|------|-------|--------|--------|
-${checkBlock}
+        <aside style={{ position: 'sticky', top: 76, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ ...panel, padding: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
+              <svg width="56" height="56" viewBox="0 0 36 36" aria-hidden="true">
+                <defs><linearGradient id="ringGrad" x1="0" x2="1"><stop offset="0" stopColor="#C77DFF" /><stop offset="1" stopColor="#7500C0" /></linearGradient></defs>
+                <circle cx="18" cy="18" r="15" fill="none" stroke="var(--line-2)" strokeWidth="3.5" />
+                <circle cx="18" cy="18" r="15" fill="none" stroke="url(#ringGrad)" strokeWidth="3.5" strokeLinecap="round"
+                  strokeDasharray={`${checksMet ? 94.2 : 0} 94.2`} transform="rotate(-90 18 18)" />
+              </svg>
+              <div>
+                <b style={{ fontSize: 18 }}>{checksMet ? REQUIRED_CHECKS.length : 0} of {REQUIRED_CHECKS.length}</b>
+                <div style={{ fontSize: 13, color: 'var(--muted)' }}>required checks met</div>
+              </div>
+            </div>
+            <ul style={{ listStyle: 'none' }}>
+              {REQUIRED_CHECKS.map((c, i) => (
+                <li key={c} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', fontSize: 13, borderBottom: i < REQUIRED_CHECKS.length - 1 ? '1px solid var(--line-2)' : 'none' }}>
+                  {c}<span style={{ fontWeight: 500, color: checksMet ? 'var(--low)' : 'var(--med)' }}>{checksMet ? 'Met' : 'Open'}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
 
-## Workflow Tasks
+          <div style={{ ...panel, padding: 18 }}>
+            <h3 style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 10 }}>Your decision</h3>
+            {decision ? (
+              <p style={{ fontSize: 13.5, color: 'var(--ink-2)' }}><b>{ACTION[decision].done}</b> — recorded on the claim file.</p>
+            ) : (
+              <>
+                <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Note for the claim file" aria-label="Note for the claim file"
+                  style={{ width: '100%', minHeight: 74, resize: 'vertical', border: '1px solid var(--line)', borderRadius: 'var(--r-s)', padding: '9px 11px', fontSize: 13, background: 'var(--canvas)', marginBottom: 4 }} />
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>Required for declines and referrals.</p>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <button type="button" onClick={() => setDialog(primaryAction)} style={primary}>{ACTION[primaryAction].verb} claim</button>
+                  <button type="button" onClick={() => setDialog('survey')} style={btn}>Request independent survey first</button>
+                  <button type="button" onClick={() => setDialog(ghostAction)} style={{ ...btn, border: '1px solid transparent', background: 'transparent' }}>
+                    {ACTION[ghostAction].verb} anyway
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </aside>
+      </div>
 
-${(claim.workflow_tasks || []).length > 0
-    ? (claim.workflow_tasks || []).map(wt => `- **${wt.task}**: ${wt.status || 'pending'} — ${wt.detail || ''}`).join('\n')
-    : '- No pending workflow tasks'}
+      <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+        <div ref={pdfRef} className="dossier-md" style={{ fontFamily: 'var(--font)', color: '#1e293b', background: '#fff', padding: '0.4in', fontSize: 11, lineHeight: 1.6, width: '7.2in' }}>
+          <Markdown remarkPlugins={[remarkGfm]}>{dossier}</Markdown>
+        </div>
+      </div>
 
----
-
-*Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} · Zurich Travel Guard Claims Examiner Workflow*
-`
+      {dialog && (
+        <DecisionDialog
+          action={dialog}
+          claim={claim}
+          recommendation={d.recommendation}
+          initialNote={note}
+          onClose={() => setDialog(null)}
+          onConfirm={(action) => { setDialog(null); onDecision(action) }}
+        />
+      )}
+    </>
+  )
 }

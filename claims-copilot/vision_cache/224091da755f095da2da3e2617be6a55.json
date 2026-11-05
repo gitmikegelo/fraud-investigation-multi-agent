@@ -1,0 +1,97 @@
+{
+  "checks": [
+    {
+      "check_id": "DOC-001",
+      "check_name": "Digital Manipulation",
+      "passed": false,
+      "severity": "CRITICAL",
+      "explanation": "Multiple signs of digital manipulation detected: geometric shapes (stars, diamonds, circles) appear artificially rendered and overlaid rather than photographed; inconsistent opacity and layering of elements; sharp vector-like edges on decorative items inconsistent with natural cargo photography; blurred/semi-transparent overlays suggest post-processing composition rather than authentic survey documentation."
+    },
+    {
+      "check_id": "DOC-002",
+      "check_name": "Damage Inconsistent with Claimed Cause",
+      "passed": false,
+      "severity": "CRITICAL",
+      "explanation": "This image does not depict actual cargo damage. The content appears to be a stylized illustration or animation frame with decorative geometric shapes, stars, and abstract elements rather than genuine damaged cargo, containers, or packaging. No authentic loss mechanism can be assessed."
+    },
+    {
+      "check_id": "DOC-003",
+      "check_name": "Stock or Reused Image",
+      "passed": false,
+      "severity": "CRITICAL",
+      "explanation": "This image has the appearance of a stock illustration, animated graphic, or design template rather than an original survey photograph. The stylized rendering, decorative elements, and artificial composition are inconsistent with authentic cargo claim documentation."
+    },
+    {
+      "check_id": "DOC-004",
+      "check_name": "Capture Date/Location Conflict",
+      "passed": false,
+      "severity": "WARNING",
+      "explanation": "Timestamp visible (2026:04:07 08:34:52) shows a future date (2026), which is impossible for a current claim submission. This indicates either fabrication, system clock error, or reuse of a template/stock image with incorrect metadata."
+    },
+    {
+      "check_id": "DOC-005",
+      "check_name": "Missing Shipment Identifiers",
+      "passed": false,
+      "severity": "CRITICAL",
+      "explanation": "No container number, seal number, shipping marks, bill of lading reference, or any identifiable shipment information visible. The image contains only decorative abstract elements with no connection to any specific cargo shipment."
+    },
+    {
+      "check_id": "DOC-006",
+      "check_name": "Packing/Stowage Condition",
+      "passed": false,
+      "severity": "CRITICAL",
+      "explanation": "This is not a genuine photograph of cargo packing or stowage. The image is an illustration/animation with no real containers, dunnage, lashing, or packaging materials visible for assessment."
+    },
+    {
+      "check_id": "DOC-007",
+      "check_name": "Font Inconsistency",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable for this image type \u2014 this is not a document scan but a photograph/illustration."
+    },
+    {
+      "check_id": "DOC-008",
+      "check_name": "Altered Figures or Dates",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable for this image type \u2014 this is not a document with figures or dates to verify."
+    },
+    {
+      "check_id": "DOC-009",
+      "check_name": "Editable/Template Format",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable for this image type \u2014 this is not a document but a photograph/illustration."
+    },
+    {
+      "check_id": "DOC-010",
+      "check_name": "Missing Official Markings",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable for this image type \u2014 this is not an official document requiring carrier, surveyor or shipper markings."
+    },
+    {
+      "check_id": "DOC-011",
+      "check_name": "Signature/Stamp Anomaly",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable for this image type \u2014 no signatures or stamps present."
+    },
+    {
+      "check_id": "DOC-012",
+      "check_name": "Screenshot/Forwarded Submission",
+      "passed": false,
+      "severity": "CRITICAL",
+      "explanation": "This image appears to be a screenshot or screen capture of a digital illustration/animation rather than an original photograph or document. The grid background, rendering style, and metadata suggest it is a captured frame from design software or a digital animation."
+    },
+    {
+      "check_id": "DOC-013",
+      "check_name": "Cross-Document Mismatch",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable \u2014 no supporting documents provided for cross-reference comparison."
+    }
+  ],
+  "overall_assessment": "This image is NOT authentic cargo claim evidence. It is a digitally created illustration or animation frame with decorative geometric elements, not a genuine survey photograph of damaged cargo. The future-dated timestamp, complete absence of shipment identifiers, and stylized rendering indicate this is fabricated or reused content unsuitable for cargo claims assessment.",
+  "confidence": 0.98
+}

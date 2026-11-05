@@ -1,0 +1,97 @@
+{
+  "checks": [
+    {
+      "check_id": "DOC-001",
+      "check_name": "Digital Manipulation",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "No signs of photo editing, cloning, warped edges, or mismatched lighting. Document appears to be a clean scan with uniform contrast and alignment."
+    },
+    {
+      "check_id": "DOC-002",
+      "check_name": "Damage Inconsistent with Claimed Cause",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable \u2014 this is a bill of lading document, not a damage survey photograph. No cargo condition is depicted."
+    },
+    {
+      "check_id": "DOC-003",
+      "check_name": "Stock or Reused Image",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable for document scans. This is an original bill of lading form, not a photograph."
+    },
+    {
+      "check_id": "DOC-004",
+      "check_name": "Capture Date/Location Conflict",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Document date (24 AUG 2026) and location (Singapore) are consistent with the place of issue and shipment date stated on the B/L. No timestamp or watermark conflicts detected."
+    },
+    {
+      "check_id": "DOC-005",
+      "check_name": "Missing Shipment Identifiers",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable for bills of lading. This check applies to survey photographs. The B/L contains full shipment identifiers: B/L No. MCLSIN2604417, six container numbers with seal numbers, and shipping marks."
+    },
+    {
+      "check_id": "DOC-006",
+      "check_name": "Packing/Stowage Condition",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable \u2014 this is a bill of lading document, not a photograph of cargo or packaging condition."
+    },
+    {
+      "check_id": "DOC-007",
+      "check_name": "Font Inconsistency",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Font usage is consistent throughout the document. All printed fields use uniform sans-serif typeface, weight and size. No evidence of mixed fonts or edited text weights."
+    },
+    {
+      "check_id": "DOC-008",
+      "check_name": "Altered Figures or Dates",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "All figures, dates, container numbers, seal numbers and weights show consistent baseline alignment, ink colour and clarity. No overwriting, white-out patches, or digit tampering detected. Gross weight (135,000.000 KGS) and all container/seal identifiers are cleanly printed."
+    },
+    {
+      "check_id": "DOC-009",
+      "check_name": "Editable/Template Format",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Document is formatted as a professional carrier bill of lading with structured fields and pre-printed layout. No evidence of Word template or spreadsheet origin; consistent with Meridian Container Line's official B/L form."
+    },
+    {
+      "check_id": "DOC-010",
+      "check_name": "Missing Official Markings",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "All expected markings present: carrier name (MERIDIAN CONTAINER LINE), B/L number (MCLSIN2604417), vessel/voyage (MERIDIAN HARMONY 034N), 'SHIPPED ON BOARD' notation with date (24 AUG 2026), and signature block for carrier agent. No omissions detected."
+    },
+    {
+      "check_id": "DOC-011",
+      "check_name": "Signature/Stamp Anomaly",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Signature block is present and appears to be an original handwritten signature (not photocopied or pasted). Signature is consistent with a genuine carrier agent endorsement. No evidence of cloning or artificial application."
+    },
+    {
+      "check_id": "DOC-012",
+      "check_name": "Screenshot/Forwarded Submission",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Image is a clean, direct scan of the original bill of lading document. No screen artifacts, browser elements, or forwarding metadata visible. Appears to be a primary document submission."
+    },
+    {
+      "check_id": "DOC-013",
+      "check_name": "Cross-Document Mismatch",
+      "passed": true,
+      "severity": "INFO",
+      "explanation": "Not applicable \u2014 only one document provided. Internal consistency check: all fields align (shipper, consignee, vessel, port, container numbers, weights, dates). No internal contradictions detected."
+    }
+  ],
+  "overall_assessment": "This bill of lading appears to be a genuine, unaltered original document issued by Meridian Container Line on 24 AUG 2026 for a combined transport shipment from Singapore to Manila. All security features, identifiers, signatures and formatting are consistent with an authentic carrier B/L.",
+  "confidence": 0.96
+}
